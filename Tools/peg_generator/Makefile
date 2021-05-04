@@ -1,10 +1,7 @@
 UNAME_S := $(shell uname -s)
-ifeq ($(UNAME_S),Linux)
-	PYTHON ?= ../../python
-endif
-ifeq ($(UNAME_S),Darwin)
-	PYTHON ?= ../../python.exe
-endif
+
+PYTHON ?= ../../python.exe
+
 VENVDIR ?= ./venv
 VENVPYTHON ?= $(VENVDIR)/bin/python
 CPYTHON ?= ../../Lib
