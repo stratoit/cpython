@@ -1608,13 +1608,13 @@ err_input(perrdetail *err)
         goto cleanup;
     case E_SYNTAX:
         errtype = PyExc_IndentationError;
-        if (err->expected == INDENT)
-            msg = "expected an indented block";
-        else if (err->token == INDENT)
-            msg = "unexpected indent";
-        else if (err->token == DEDENT)
-            msg = "unexpected unindent";
-        else if (err->expected == NOTEQUAL) {
+        //if (err->expected == INDENT)
+        //    msg = "expected an indented block";
+        //else if (err->token == INDENT)
+        //    msg = "unexpected indent";
+        //else if (err->token == DEDENT)
+        //    msg = "unexpected unindent";
+        if (err->expected == NOTEQUAL) {
             errtype = PyExc_SyntaxError;
             msg = "with Barry as BDFL, use '<>' instead of '!='";
         }

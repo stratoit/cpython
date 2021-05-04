@@ -320,12 +320,12 @@ parsetok(struct tok_state *tok, grammar *g, int start, perrdetail *err_ret,
             /* Add the right number of dedent tokens,
                except if a certain flag is given --
                codeop.py uses this. */
-            if (tok->indent &&
-                !(*flags & PyPARSE_DONT_IMPLY_DEDENT))
-            {
-                tok->pendin = -tok->indent;
-                tok->indent = 0;
-            }
+            //if (tok->indent &&
+            //    !(*flags & PyPARSE_DONT_IMPLY_DEDENT))
+            //{
+            //    tok->pendin = -tok->indent;
+            //    tok->indent = 0;
+            //}
         }
         else {
             started = 1;

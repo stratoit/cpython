@@ -603,10 +603,10 @@ _PyPegen_fill_token(Parser *p)
         type = NEWLINE; /* Add an extra newline */
         p->parsing_started = 0;
 
-        if (p->tok->indent && !(p->flags & PyPARSE_DONT_IMPLY_DEDENT)) {
-            p->tok->pendin = -p->tok->indent;
-            p->tok->indent = 0;
-        }
+        //if (p->tok->indent && !(p->flags & PyPARSE_DONT_IMPLY_DEDENT)) {
+        //    p->tok->pendin = -p->tok->indent;
+        //    p->tok->indent = 0;
+        //}
     }
     else {
         p->parsing_started = 1;
@@ -825,7 +825,7 @@ _PyPegen_get_last_nonnwhitespace_token(Parser *p)
     Token *token = NULL;
     for (int m = p->mark - 1; m >= 0; m--) {
         token = p->tokens[m];
-        if (token->type != ENDMARKER && (token->type < NEWLINE || token->type > DEDENT)) {
+        if (token->type != ENDMARKER && (token->type < NEWLINE/* || token->type > DEDENT*/)) {
             break;
         }
     }
@@ -1120,6 +1120,7 @@ reset_parser_state(Parser *p)
 void *
 _PyPegen_run_parser(Parser *p)
 {
+	//Py_DebugFlag = 1;
     void *res = _PyPegen_parse(p);
     if (res == NULL) {
         reset_parser_state(p);
@@ -1134,15 +1135,16 @@ _PyPegen_run_parser(Parser *p)
             RAISE_SYNTAX_ERROR("unexpected EOF while parsing");
         }
         else {
-            if (p->tokens[p->fill-1]->type == INDENT) {
-                RAISE_INDENTATION_ERROR("unexpected indent");
-            }
-            else if (p->tokens[p->fill-1]->type == DEDENT) {
-                RAISE_INDENTATION_ERROR("unexpected unindent");
-            }
-            else {
-                RAISE_SYNTAX_ERROR("invalid syntax");
-            }
+            //if (p->tokens[p->fill-1]->type == INDENT) {
+            //    RAISE_INDENTATION_ERROR("unexpected indent");
+            //}
+            //else if (p->tokens[p->fill-1]->type == DEDENT) {
+            //    RAISE_INDENTATION_ERROR("unexpected unindent");
+            //}
+            //else {
+            //    RAISE_SYNTAX_ERROR("invalid syntax");
+            //}
+			RAISE_SYNTAX_ERROR("invalid syntax");
         }
         return NULL;
     }
