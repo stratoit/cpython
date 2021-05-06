@@ -48,13 +48,14 @@ type_expressions[asdl_seq*]:
 statements[asdl_seq*]: a=statement+ { _PyPegen_seq_flatten(p, a) }
 statement[asdl_seq*]: a=compound_stmt { _PyPegen_singleton_seq(p, a) } | simple_stmt
 statement_newline[asdl_seq*]:
-    | a=compound_stmt NEWLINE { _PyPegen_singleton_seq(p, a) }
+    | a=compound_stmt { _PyPegen_singleton_seq(p, a) }
     | simple_stmt
     | NEWLINE { _PyPegen_singleton_seq(p, CHECK(_Py_Pass(EXTRA))) }
     | ENDMARKER { _PyPegen_interactive_exit(p) }
 simple_stmt[asdl_seq*]:
     | a=small_stmt !';' NEWLINE { _PyPegen_singleton_seq(p, a) } # Not needed, there for speedup
     | a=';'.small_stmt+ [';'] NEWLINE { a }
+    | NEWLINE { _PyPegen_singleton_seq(p, CHECK(_Py_Pass(EXTRA))) }
 # NOTE: assignment MUST precede expression, else parsing a simple assignment
 # will throw a SyntaxError.
 small_stmt[stmt_ty] (memo):
@@ -297,7 +298,7 @@ class_def_raw[stmt_ty]:
                      c, NULL, EXTRA) }
 
 block[asdl_seq*] (memo):
-    | [NEWLINE?] '{' NEWLINE a=statements '}' [NEWLINE?] { a }
+    | [NEWLINE?] '{' a=statements '}' NEWLINE { a }
     | simple_stmt
 #    | invalid_block
 

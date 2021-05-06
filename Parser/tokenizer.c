@@ -1225,7 +1225,7 @@ tok_get(struct tok_state *tok, const char **p_start, const char **p_end)
             /* We can't jump back right here since we still
                may need to skip to the end of a comment */
         }
-        if (!blankline && tok->level == 0) {
+        if (!blankline && tok->level != 0) {
             //if (col == tok->indstack[tok->indent]) {
             //    /* No change */
             //    if (altcol != tok->altindstack[tok->indent]) {
@@ -1472,9 +1472,9 @@ tok_get(struct tok_state *tok, const char **p_start, const char **p_end)
     /* Newline */
     if (c == '\n') {
         tok->atbol = 1;
-   //     if (blankline || tok->level > 0) {
-			//return NEWLINE;
-   //     }
+        if (blankline/* || tok->level > 0*/) {
+			goto nextline;
+        }
         *p_start = tok->start;
         *p_end = tok->cur - 1; /* Leave '\n' out of the string */
         tok->cont_line = 0;
