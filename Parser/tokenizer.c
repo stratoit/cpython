@@ -1225,59 +1225,62 @@ tok_get(struct tok_state *tok, const char **p_start, const char **p_end)
             /* We can't jump back right here since we still
                may need to skip to the end of a comment */
         }
-        if (!blankline && tok->level != 0) {
-            //if (col == tok->indstack[tok->indent]) {
-            //    /* No change */
-            //    if (altcol != tok->altindstack[tok->indent]) {
-            //        return indenterror(tok);
-            //    }
-            //}
-            //else if (col > tok->indstack[tok->indent]) {
-            //    /* Indent -- always one */
-            //    if (tok->indent+1 >= MAXINDENT) {
-            //        tok->done = E_TOODEEP;
-            //        tok->cur = tok->inp;
-            //        return ERRORTOKEN;
-            //    }
-            //    if (altcol <= tok->altindstack[tok->indent]) {
-            //        return indenterror(tok);
-            //    }
-            //    tok->pendin++;
-            //    tok->indstack[++tok->indent] = col;
-            //    tok->altindstack[tok->indent] = altcol;
-            //}
-            //else /* col < tok->indstack[tok->indent] */ {
-            //    /* Dedent -- any number, must be consistent */
-            //    while (tok->indent > 0 &&
-            //        col < tok->indstack[tok->indent]) {
-            //        tok->pendin--;
-            //        tok->indent--;
-            //    }
-            //    if (col != tok->indstack[tok->indent]) {
-            //        tok->done = E_DEDENT;
-            //        tok->cur = tok->inp;
-            //        return ERRORTOKEN;
-            //    }
-            //    if (altcol != tok->altindstack[tok->indent]) {
-            //        return indenterror(tok);
-            //    }
-            //}
+        if (!blankline && tok->level == 0 && pythonExtensionFileRead) {
+            if (col == tok->indstack[tok->indent]) {
+                /* No change */
+                if (altcol != tok->altindstack[tok->indent]) {
+                    return indenterror(tok);
+                }
+            }
+            else if (col > tok->indstack[tok->indent] && pythonExtensionFileRead) {
+                /* Indent -- always one */
+                if (tok->indent+1 >= MAXINDENT) {
+                    tok->done = E_TOODEEP;
+                    tok->cur = tok->inp;
+                    return ERRORTOKEN;
+                }
+                if (altcol <= tok->altindstack[tok->indent]) {
+                    return indenterror(tok);
+                }
+                tok->pendin++;
+                tok->indstack[++tok->indent] = col;
+                tok->altindstack[tok->indent] = altcol;
+            }
+            else /* col < tok->indstack[tok->indent] */ {
+                /* Dedent -- any number, must be consistent */
+                while (tok->indent > 0 &&
+                    col < tok->indstack[tok->indent]) {
+                    tok->pendin--;
+                    tok->indent--;
+                }
+                if (col != tok->indstack[tok->indent]) {
+                    tok->done = E_DEDENT;
+                    tok->cur = tok->inp;
+                    return ERRORTOKEN;
+                }
+                if (altcol != tok->altindstack[tok->indent]) {
+                    return indenterror(tok);
+                }
+            }
         }
     }
 
     tok->start = tok->cur;
 
     /* Return pending indents/dedents */
-    //if (tok->pendin != 0) {
-    //    if (tok->pendin < 0) {
-    //        tok->pendin++;
-    //        return DEDENT;
-    //    }
-    //    else {
-    //        tok->pendin--;
-    //        return INDENT;
-    //    }
-    //}
+	if (pythonExtensionFileRead)
+	{
+		if (tok->pendin != 0) {
+			if (tok->pendin < 0) {
+				tok->pendin++;
+				return DEDENT;
+			}
+			else {
+				tok->pendin--;
+				return INDENT;
+			}
+		}
+	}
 
     /* Peek ahead at the next character */
     c = tok_nextc(tok);
@@ -1472,9 +1475,14 @@ tok_get(struct tok_state *tok, const char **p_start, const char **p_end)
     /* Newline */
     if (c == '\n') {
         tok->atbol = 1;
-        if (blankline/* || tok->level > 0*/) {
+        if (blankline/* || tok->level > 0*/ && !pythonExtensionFileRead) {
 			goto nextline;
         }
+		else if((blankline || tok->level > 0) && pythonExtensionFileRead)
+		{
+			goto nextline;
+		}
+
         *p_start = tok->start;
         *p_end = tok->cur - 1; /* Leave '\n' out of the string */
         tok->cont_line = 0;

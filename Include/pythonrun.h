@@ -3,6 +3,9 @@
 
 #ifndef Py_PYTHONRUN_H
 #define Py_PYTHONRUN_H
+
+extern int pythonExtensionFileRead;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -215,3 +218,5 @@ PyAPI_FUNC(int) PyOS_CheckStack(void);
 }
 #endif
 #endif /* !Py_PYTHONRUN_H */
+
+void setFileExtensionFlag(char *filename);

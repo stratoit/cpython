@@ -303,5 +303,6 @@ void *_PyPegen_nonparen_genexp_in_call(Parser *p, expr_ty args);
 
 // Generated function in parse.c - function definition in python.gram
 void *_PyPegen_parse(Parser *);
+void *_PyPegen_parse2(Parser *);
 
 #endif

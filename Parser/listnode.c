@@ -42,12 +42,15 @@ list1node(FILE *fp, node *n)
     else if (ISTERMINAL(TYPE(n))) {
         interp = _PyInterpreterState_GET();
         switch (TYPE(n)) {
-        //case INDENT:
-        //    interp->parser.listnode.level++;
-        //    break;
-        //case DEDENT:
-        //    interp->parser.listnode.level--;
-        //    break;
+			if (pythonExtensionFileRead)
+			{
+				case INDENT:
+					interp->parser.listnode.level++;
+					break;
+				case DEDENT:
+					interp->parser.listnode.level--;
+					break;
+			}
         default:
             if (interp->parser.listnode.atbol) {
                 int i;

@@ -54,6 +54,8 @@ _Py_IDENTIFIER(stdout);
 _Py_IDENTIFIER(stderr);
 _Py_static_string(PyId_string, "<string>");
 
+int pythonExtensionFileRead = 0;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -81,6 +83,9 @@ PyRun_AnyFileExFlags(FILE *fp, const char *filename, int closeit,
 {
     if (filename == NULL)
         filename = "???";
+
+	setFileExtensionFlag(filename);
+
     if (Py_FdIsInteractive(fp, filename)) {
         int err = PyRun_InteractiveLoopFlags(fp, filename, flags);
         if (closeit)
@@ -1748,6 +1753,21 @@ PyOS_CheckStack(void)
         }
     }
     return 1;
+}
+
+void setFileExtensionFlag(char * filename)
+{
+	char *ch = filename;
+	while (*++ch != '\0');
+	while (*--ch != '.');
+	++ch;
+
+	if (!strcmp(ch, "py"))
+		pythonExtensionFileRead = 1;
+	else if (!strcmp(ch, "script"))
+		pythonExtensionFileRead = 0;
+	else
+		assert(0);
 }
 
 #endif /* WIN32 && _MSC_VER */

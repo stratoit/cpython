@@ -603,10 +603,10 @@ _PyPegen_fill_token(Parser *p)
         type = NEWLINE; /* Add an extra newline */
         p->parsing_started = 0;
 
-        //if (p->tok->indent && !(p->flags & PyPARSE_DONT_IMPLY_DEDENT)) {
-        //    p->tok->pendin = -p->tok->indent;
-        //    p->tok->indent = 0;
-        //}
+        if (p->tok->indent && !(p->flags & PyPARSE_DONT_IMPLY_DEDENT) && pythonExtensionFileRead) {
+            p->tok->pendin = -p->tok->indent;
+            p->tok->indent = 0;
+        }
     }
     else {
         p->parsing_started = 1;
@@ -825,9 +825,13 @@ _PyPegen_get_last_nonnwhitespace_token(Parser *p)
     Token *token = NULL;
     for (int m = p->mark - 1; m >= 0; m--) {
         token = p->tokens[m];
-        if (token->type != ENDMARKER && (token->type < NEWLINE/* || token->type > DEDENT*/)) {
+        if (token->type != ENDMARKER && (token->type < NEWLINE/* || token->type > DEDENT*/) && !pythonExtensionFileRead) {
             break;
         }
+		else if (token->type != ENDMARKER && (token->type < NEWLINE || token->type > DEDENT) && pythonExtensionFileRead) {
+			break;
+		}
+
     }
     return token;
 }
@@ -1121,10 +1125,18 @@ void *
 _PyPegen_run_parser(Parser *p)
 {
 	//Py_DebugFlag = 1;
-    void *res = _PyPegen_parse(p);
-    if (res == NULL) {
+
+	void *res = NULL;
+	if (pythonExtensionFileRead == 1)
+	{
+		res = _PyPegen_parse2(p);
+	}
+	else
+		res = _PyPegen_parse(p);
+
+    if (res == NULL && pythonExtensionFileRead == 1) {
         reset_parser_state(p);
-        _PyPegen_parse(p);
+        _PyPegen_parse2(p);
         if (PyErr_Occurred()) {
             return NULL;
         }
@@ -1135,19 +1147,46 @@ _PyPegen_run_parser(Parser *p)
             RAISE_SYNTAX_ERROR("unexpected EOF while parsing");
         }
         else {
-            //if (p->tokens[p->fill-1]->type == INDENT) {
-            //    RAISE_INDENTATION_ERROR("unexpected indent");
-            //}
-            //else if (p->tokens[p->fill-1]->type == DEDENT) {
-            //    RAISE_INDENTATION_ERROR("unexpected unindent");
-            //}
-            //else {
-            //    RAISE_SYNTAX_ERROR("invalid syntax");
-            //}
+            if (p->tokens[p->fill-1]->type == INDENT) {
+                RAISE_INDENTATION_ERROR("unexpected indent");
+            }
+            else if (p->tokens[p->fill-1]->type == DEDENT) {
+                RAISE_INDENTATION_ERROR("unexpected unindent");
+            }
+            else {
+                RAISE_SYNTAX_ERROR("invalid syntax");
+            }
 			RAISE_SYNTAX_ERROR("invalid syntax");
         }
         return NULL;
     }
+	else if(res == NULL)
+	{
+		reset_parser_state(p);
+		_PyPegen_parse(p);
+		if (PyErr_Occurred()) {
+			return NULL;
+		}
+		if (p->fill == 0) {
+			RAISE_SYNTAX_ERROR("error at start before reading any input");
+		}
+		else if (p->tok->done == E_EOF) {
+			RAISE_SYNTAX_ERROR("unexpected EOF while parsing");
+		}
+		else {
+			//if (p->tokens[p->fill-1]->type == INDENT) {
+			//    RAISE_INDENTATION_ERROR("unexpected indent");
+			//}
+			//else if (p->tokens[p->fill-1]->type == DEDENT) {
+			//    RAISE_INDENTATION_ERROR("unexpected unindent");
+			//}
+			//else {
+			//    RAISE_SYNTAX_ERROR("invalid syntax");
+			//}
+			RAISE_SYNTAX_ERROR("invalid syntax");
+		}
+		return NULL;
+	}
 
     if (p->start_rule == Py_single_input && bad_single_statement(p)) {
         p->tok->done = E_BADSINGLE; // This is not necessary for now, but might be in the future
