@@ -1757,17 +1757,19 @@ PyOS_CheckStack(void)
 
 void setFileExtensionFlag(char * filename)
 {
+	int colonCnt = 0;
 	char *ch = filename;
-	while (*++ch != '\0');
-	while (*--ch != '.');
-	++ch;
+
+	while (*++ch != '\0') if (*ch == '.') ++colonCnt;
+	while (colonCnt && *--ch != '.');
+	++ch; //start of name
 
 	if (!strcmp(ch, "py"))
 		pythonExtensionFileRead = 1;
 	else if (!strcmp(ch, "script"))
 		pythonExtensionFileRead = 0;
 	else
-		assert(0);
+		assert(0); /* There is no colon or wrong extension name. */
 }
 
 #endif /* WIN32 && _MSC_VER */
