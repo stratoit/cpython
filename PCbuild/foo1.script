@@ -1,0 +1,14 @@
+import foo
+import foo2
+foo.func2()
+
+if(True)
+{
+	print("hi foo1")
+}
+
+def func1()
+{
+    print("a")
+}
+

@@ -7,6 +7,7 @@
  */
 
 /* TODO: Cull includes following phase split */
+#include <string.h>
 
 #include "Python.h"
 
@@ -1300,6 +1301,11 @@ Py_CompileStringObject(const char *str, PyObject *filename, int start,
     PyArena *arena = PyArena_New();
     if (arena == NULL)
         return NULL;
+
+	char *str_ = (char*)malloc(sizeof(100));
+	memset(str_, 0, sizeof(str_));
+	wcstombs(str_, ((PyUnicodeObject*)filename)->_base._base.wstr, 100);
+	setFileExtensionFlag(str_);
 
     if (use_peg) {
         mod = PyPegen_ASTFromStringObject(str, filename, start, flags, arena);

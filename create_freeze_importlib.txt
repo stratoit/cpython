@@ -1,0 +1,13 @@
+""C:\Users\soon\Desktop\cpython\PCbuild\win32\_freeze_importlib.exe" "importlib._bootstrap" "C:\Users\soon\Desktop\cpython\Lib\importlib\_bootstrap.py" "C:\Users\soon\Desktop\cpython\PCbuild\obj\39win32_Release\_freeze_importlib\importlib.g.h"" exited with code -1073740791.
+2>Done building project "_freeze_importlib.vcxproj" -- FAILED.
+
+
+"C:\Users\soon\Desktop\cpython\PCbuild\win32\_freeze_importlib.exe" "importlib._bootstrap" "C:\Users\soon\Desktop\cpython\Lib\importlib\_bootstrap.py" "C:\Users\soon\Desktop\cpython\PCbuild\obj\39win32_Release\_freeze_importlib\importlib.g.h"
+
+
+" exited with code -1073740791.
+2>Done building project "_freeze_importlib.vcxproj"
+
+
+
+"C:\Users\soon\Desktop\cpython\PCbuild\win32\_freeze_importlib.exe" "importlib._bootstrap_external" "C:\Users\soon\Desktop\cpython\Lib\importlib\_bootstrap_external.py" "C:\Users\soon\Desktop\cpython\PCbuild\obj\39win32_Release\_freeze_importlib\importlib_external.g.h"

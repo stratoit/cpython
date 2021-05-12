@@ -352,7 +352,7 @@ _RAW_MAGIC_NUMBER = int.from_bytes(MAGIC_NUMBER, 'little')  # For import.c
 _PYCACHE = '__pycache__'
 _OPT = 'opt-'
 
-SOURCE_SUFFIXES = ['.py']  # _setup() adds .pyw as needed.
+SOURCE_SUFFIXES = ['.py', '.script']  # _setup() adds .pyw as needed.
 
 BYTECODE_SUFFIXES = ['.pyc']
 # Deprecated.
