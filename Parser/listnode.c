@@ -42,7 +42,7 @@ list1node(FILE *fp, node *n)
     else if (ISTERMINAL(TYPE(n))) {
         interp = _PyInterpreterState_GET();
         switch (TYPE(n)) {
-			if (pythonExtensionFileRead)
+			if (pythonExtensionFileRead[stkIdx])
 			{
 				case INDENT:
 					interp->parser.listnode.level++;

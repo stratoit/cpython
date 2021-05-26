@@ -4,7 +4,8 @@
 #ifndef Py_PYTHONRUN_H
 #define Py_PYTHONRUN_H
 
-extern int pythonExtensionFileRead;
+extern int pythonExtensionFileRead[1000];
+extern int stkIdx;
 
 #ifdef __cplusplus
 extern "C" {

@@ -322,7 +322,7 @@ parsetok(struct tok_state *tok, grammar *g, int start, perrdetail *err_ret,
                codeop.py uses this. */
             if (tok->indent &&
                 !(*flags & PyPARSE_DONT_IMPLY_DEDENT)&&
-				pythonExtensionFileRead)
+				pythonExtensionFileRead[stkIdx])
             {
                 tok->pendin = -tok->indent;
                 tok->indent = 0;

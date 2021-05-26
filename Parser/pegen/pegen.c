@@ -603,7 +603,7 @@ _PyPegen_fill_token(Parser *p)
         type = NEWLINE; /* Add an extra newline */
         p->parsing_started = 0;
 
-        if (p->tok->indent && !(p->flags & PyPARSE_DONT_IMPLY_DEDENT) && pythonExtensionFileRead) {
+        if (p->tok->indent && !(p->flags & PyPARSE_DONT_IMPLY_DEDENT) && pythonExtensionFileRead[stkIdx]) {
             p->tok->pendin = -p->tok->indent;
             p->tok->indent = 0;
         }
@@ -825,10 +825,10 @@ _PyPegen_get_last_nonnwhitespace_token(Parser *p)
     Token *token = NULL;
     for (int m = p->mark - 1; m >= 0; m--) {
         token = p->tokens[m];
-        if (token->type != ENDMARKER && (token->type < NEWLINE/* || token->type > DEDENT*/) && !pythonExtensionFileRead) {
+        if (token->type != ENDMARKER && (token->type < NEWLINE/* || token->type > DEDENT*/) && !pythonExtensionFileRead[stkIdx]) {
             break;
         }
-		else if (token->type != ENDMARKER && (token->type < NEWLINE || token->type > DEDENT) && pythonExtensionFileRead) {
+		else if (token->type != ENDMARKER && (token->type < NEWLINE || token->type > DEDENT) && pythonExtensionFileRead[stkIdx]) {
 			break;
 		}
 
@@ -1127,14 +1127,21 @@ _PyPegen_run_parser(Parser *p)
 	//Py_DebugFlag = 1;
 
 	void *res = NULL;
-	if (pythonExtensionFileRead == 1)
+
+	if (stkIdx < 0)
+	{
+		printf("\npegen.c line : 1133\n");
+		assert(0);
+	}
+
+	if (pythonExtensionFileRead[stkIdx] == 1)
 	{
 		res = _PyPegen_parse2(p);
 	}
 	else
 		res = _PyPegen_parse(p);
 
-    if (res == NULL && pythonExtensionFileRead == 1) {
+    if (res == NULL && pythonExtensionFileRead[stkIdx] == 1) {
         reset_parser_state(p);
         _PyPegen_parse2(p);
         if (PyErr_Occurred()) {
@@ -1191,7 +1198,6 @@ _PyPegen_run_parser(Parser *p)
         p->tok->done = E_BADSINGLE; // This is not necessary for now, but might be in the future
         return RAISE_SYNTAX_ERROR("multiple statements found while compiling a single statement");
     }
-
 #if defined(Py_DEBUG) && defined(Py_BUILD_CORE)
     if (p->start_rule == Py_single_input ||
         p->start_rule == Py_file_input ||

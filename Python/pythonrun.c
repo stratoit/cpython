@@ -55,7 +55,8 @@ _Py_IDENTIFIER(stdout);
 _Py_IDENTIFIER(stderr);
 _Py_static_string(PyId_string, "<string>");
 
-int pythonExtensionFileRead = 0;
+int pythonExtensionFileRead[1000] = { 0, };
+int stkIdx = -1;
 
 #ifdef __cplusplus
 extern "C" {
@@ -1101,12 +1102,29 @@ PyRun_StringFlags(const char *str, int start, PyObject *globals,
     if (arena == NULL)
         return NULL;
 
+	char *str_ = (char*)malloc(sizeof(100000));
+	memset(str_, 0, sizeof(str_));
+
+	if (((PyUnicodeObject*)filename)->_base._base.wstr)
+	{
+		wcstombs(str_, ((PyUnicodeObject*)filename)->_base._base.wstr, 1000);
+		setFileExtensionFlag(str_);
+	}
+	else
+	{
+		pythonExtensionFileRead[++stkIdx] = 1;
+	}
+
     if (use_peg) {
         mod = PyPegen_ASTFromStringObject(str, filename, start, flags, arena);
     }
     else {
         mod = PyParser_ASTFromStringObject(str, filename, start, flags, arena);
     }
+
+	free(*str_);
+	free(str_);
+	--stkIdx;
 
     if (mod != NULL)
         ret = run_mod(mod, filename, globals, locals, flags, arena);
@@ -1311,7 +1329,7 @@ Py_CompileStringObject(const char *str, PyObject *filename, int start,
 	}
 	else
 	{
-		pythonExtensionFileRead = 1;
+		pythonExtensionFileRead[++stkIdx] = 1;
 	}
 
     if (use_peg) {
@@ -1320,6 +1338,9 @@ Py_CompileStringObject(const char *str, PyObject *filename, int start,
     else {
         mod = PyParser_ASTFromStringObject(str, filename, start, flags, arena);
     }
+
+	--stkIdx;
+
     if (mod == NULL) {
         PyArena_Free(arena);
         return NULL;
@@ -1331,6 +1352,7 @@ Py_CompileStringObject(const char *str, PyObject *filename, int start,
     }
     co = PyAST_CompileObject(mod, filename, flags, optimize, arena);
     PyArena_Free(arena);
+
     return (PyObject *)co;
 }
 
@@ -1423,12 +1445,27 @@ _Py_SymtableStringObjectFlags(const char *str, PyObject *filename, int start, Py
     if (arena == NULL)
         return NULL;
 
+	char *str_ = (char*)malloc(sizeof(1000));
+	memset(str_, 0, sizeof(str_));
+	printf("--------%s\n", *str_);
+
+	if (((PyUnicodeObject*)filename)->_base._base.wstr)
+	{
+		wcstombs(str_, ((PyUnicodeObject*)filename)->_base._base.wstr, 1000);
+		setFileExtensionFlag(str_);
+	}
+	else
+	{
+		pythonExtensionFileRead[++stkIdx] = 1;
+	}
+
     if (use_peg) {
         mod = PyPegen_ASTFromStringObject(str, filename, start, flags, arena);
     }
     else {
         mod = PyParser_ASTFromStringObject(str, filename, start, flags, arena);
     }
+	--stkIdx;
     if (mod == NULL) {
         PyArena_Free(arena);
         return NULL;
@@ -1773,16 +1810,22 @@ void setFileExtensionFlag(char * filename)
 	int colonCnt = 0;
 	char *ch = filename;
 
+	printf("------------- %s\n", filename);
+
 	while (*++ch != '\0') if (*ch == '.') ++colonCnt;
 	while (colonCnt && *--ch != '.');
 	++ch; //start of name
 
 	if (!strcmp(ch, "py"))
-		pythonExtensionFileRead = 1;
+		pythonExtensionFileRead[++stkIdx] = 1;
 	else if (!strcmp(ch, "script"))
-		pythonExtensionFileRead = 0;
+		pythonExtensionFileRead[++stkIdx] = 0;
 	else
-		assert(0); /* There is no colon or wrong extension name. */
+	{
+		pythonExtensionFileRead[++stkIdx] = 1;
+		printf("pythonrun.c line : 1819 extension error");
+		//assert(0); /* There is no colon or wrong extension name. */
+	}
 }
 
 #endif /* WIN32 && _MSC_VER */

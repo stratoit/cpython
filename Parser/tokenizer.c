@@ -1225,14 +1225,14 @@ tok_get(struct tok_state *tok, const char **p_start, const char **p_end)
             /* We can't jump back right here since we still
                may need to skip to the end of a comment */
         }
-        if (!blankline && tok->level == 0 && pythonExtensionFileRead) {
+        if (!blankline && tok->level == 0 && pythonExtensionFileRead[stkIdx]) {
             if (col == tok->indstack[tok->indent]) {
                 /* No change */
                 if (altcol != tok->altindstack[tok->indent]) {
                     return indenterror(tok);
                 }
             }
-            else if (col > tok->indstack[tok->indent] && pythonExtensionFileRead) {
+            else if (col > tok->indstack[tok->indent] && pythonExtensionFileRead[stkIdx]) {
                 /* Indent -- always one */
                 if (tok->indent+1 >= MAXINDENT) {
                     tok->done = E_TOODEEP;
@@ -1268,7 +1268,7 @@ tok_get(struct tok_state *tok, const char **p_start, const char **p_end)
     tok->start = tok->cur;
 
     /* Return pending indents/dedents */
-	if (pythonExtensionFileRead)
+	if (pythonExtensionFileRead[stkIdx])
 	{
 		if (tok->pendin != 0) {
 			if (tok->pendin < 0) {
@@ -1475,10 +1475,10 @@ tok_get(struct tok_state *tok, const char **p_start, const char **p_end)
     /* Newline */
     if (c == '\n') {
         tok->atbol = 1;
-        if (blankline/* || tok->level > 0*/ && !pythonExtensionFileRead) {
+        if (blankline/* || tok->level > 0*/ && !pythonExtensionFileRead[stkIdx]) {
 			goto nextline;
         }
-		else if((blankline || tok->level > 0) && pythonExtensionFileRead)
+		else if((blankline || tok->level > 0) && pythonExtensionFileRead[stkIdx])
 		{
 			goto nextline;
 		}
