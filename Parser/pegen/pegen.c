@@ -1131,7 +1131,6 @@ _PyPegen_run_parser(Parser *p)
 	if (stkIdx < 0)
 	{
 		printf("\npegen.c line : 1133\n");
-		assert(0);
 	}
 
 	if (pythonExtensionFileRead[stkIdx] == 1)

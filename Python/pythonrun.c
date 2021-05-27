@@ -1102,13 +1102,9 @@ PyRun_StringFlags(const char *str, int start, PyObject *globals,
     if (arena == NULL)
         return NULL;
 
-	char *str_ = (char*)malloc(sizeof(100000));
-	memset(str_, 0, sizeof(str_));
-
 	if (((PyUnicodeObject*)filename)->_base._base.wstr)
 	{
-		wcstombs(str_, ((PyUnicodeObject*)filename)->_base._base.wstr, 1000);
-		setFileExtensionFlag(str_);
+		setFileExtensionFlag(PyUnicode_AsUTF8((PyUnicodeObject*)filename));	
 	}
 	else
 	{
@@ -1122,8 +1118,7 @@ PyRun_StringFlags(const char *str, int start, PyObject *globals,
         mod = PyParser_ASTFromStringObject(str, filename, start, flags, arena);
     }
 
-	free(*str_);
-	free(str_);
+	pythonExtensionFileRead[stkIdx] = 1;
 	--stkIdx;
 
     if (mod != NULL)
@@ -1320,12 +1315,9 @@ Py_CompileStringObject(const char *str, PyObject *filename, int start,
     if (arena == NULL)
         return NULL;
 
-	char *str_ = (char*)malloc(sizeof(1000));
-	memset(str_, 0, sizeof(str_));
 	if (((PyUnicodeObject*)filename)->_base._base.wstr)
 	{
-		wcstombs(str_, ((PyUnicodeObject*)filename)->_base._base.wstr, 1000);
-		setFileExtensionFlag(str_);
+		setFileExtensionFlag(PyUnicode_AsUTF8((PyUnicodeObject*)filename));
 	}
 	else
 	{
@@ -1339,6 +1331,7 @@ Py_CompileStringObject(const char *str, PyObject *filename, int start,
         mod = PyParser_ASTFromStringObject(str, filename, start, flags, arena);
     }
 
+	pythonExtensionFileRead[stkIdx] = 1;
 	--stkIdx;
 
     if (mod == NULL) {
@@ -1445,14 +1438,9 @@ _Py_SymtableStringObjectFlags(const char *str, PyObject *filename, int start, Py
     if (arena == NULL)
         return NULL;
 
-	char *str_ = (char*)malloc(sizeof(1000));
-	memset(str_, 0, sizeof(str_));
-	printf("--------%s\n", *str_);
-
 	if (((PyUnicodeObject*)filename)->_base._base.wstr)
 	{
-		wcstombs(str_, ((PyUnicodeObject*)filename)->_base._base.wstr, 1000);
-		setFileExtensionFlag(str_);
+		setFileExtensionFlag(PyUnicode_AsUTF8((PyUnicodeObject*)filename));
 	}
 	else
 	{
@@ -1465,6 +1453,7 @@ _Py_SymtableStringObjectFlags(const char *str, PyObject *filename, int start, Py
     else {
         mod = PyParser_ASTFromStringObject(str, filename, start, flags, arena);
     }
+	pythonExtensionFileRead[stkIdx] = 1;
 	--stkIdx;
     if (mod == NULL) {
         PyArena_Free(arena);
@@ -1810,8 +1799,6 @@ void setFileExtensionFlag(char * filename)
 	int colonCnt = 0;
 	char *ch = filename;
 
-	printf("------------- %s\n", filename);
-
 	while (*++ch != '\0') if (*ch == '.') ++colonCnt;
 	while (colonCnt && *--ch != '.');
 	++ch; //start of name
@@ -1823,7 +1810,7 @@ void setFileExtensionFlag(char * filename)
 	else
 	{
 		pythonExtensionFileRead[++stkIdx] = 1;
-		printf("pythonrun.c line : 1819 extension error");
+		printf("\npythonrun.c line : 1819 extension error\n");
 		//assert(0); /* There is no colon or wrong extension name. */
 	}
 }
