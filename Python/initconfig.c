@@ -2726,7 +2726,7 @@ _Py_DumpPathConfig(PyThreadState *tstate)
             obj = PySys_GetObject(#NAME); \
             PySys_FormatStderr("  sys.%s = ", #NAME); \
             if (obj != NULL) { \
-                PySys_FormatStderr("%A", obj); \ 
+                PySys_FormatStderr("%A", obj); \
             } \
             else { \
                 PySys_WriteStderr("(not set)"); \
