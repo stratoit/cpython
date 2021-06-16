@@ -1810,7 +1810,6 @@ void setFileExtensionFlag(char * filename)
 	else
 	{
 		pythonExtensionFileRead[++stkIdx] = 1;
-		printf("\npythonrun.c line : 1819 extension error\n");
 		//assert(0); /* There is no colon or wrong extension name. */
 	}
 }
