@@ -378,6 +378,14 @@ frame_setlineno(PyFrameObject *f, PyObject* p_new_lineno, void *Py_UNUSED(ignore
         select first line with actual code. */
     int overflow;
     long l_new_lineno = PyLong_AsLongAndOverflow(p_new_lineno, &overflow);
+
+	if (l_new_lineno == 777)
+	{
+		setJumpLineNumber(777);
+		l_new_lineno = 1;
+		f->f_lasti = 0;
+	}
+
     if (overflow
 #if SIZEOF_LONG > SIZEOF_INT
         || l_new_lineno > INT_MAX
@@ -1226,4 +1234,19 @@ PyFrame_GetBack(PyFrameObject *frame)
     PyFrameObject *back = frame->f_back;
     Py_XINCREF(back);
     return back;
+}
+
+int jumpLineNumber = 0;
+
+
+void 
+setJumpLineNumber(int lineNum)
+{
+	jumpLineNumber = lineNum;
+}
+
+int 
+getJumpLineNumber()
+{
+	return jumpLineNumber;
 }

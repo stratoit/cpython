@@ -79,6 +79,9 @@ PyAPI_FUNC(void) _PyFrame_DebugMallocStats(FILE *out);
 
 PyAPI_FUNC(PyFrameObject *) PyFrame_GetBack(PyFrameObject *frame);
 
+PyAPI_FUNC(void) setJumpLineNumber(int lineNum);
+PyAPI_FUNC(int) getJumpLineNumber();
+
 #ifdef __cplusplus
 }
 #endif

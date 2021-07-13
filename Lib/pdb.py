@@ -1081,8 +1081,16 @@ class Pdb(bdb.Bdb, cmd.Cmd):
             try:
                 # Do the jump, fix up our copy of the stack, and display the
                 # new position
-                self.curframe.f_lineno = arg
-                self.stack[self.curindex] = self.stack[self.curindex][0], arg
+                if arg == 777:
+                    newCO = compile('t=333\r\nprint(\'strstr\')\r\na=3333\r\nprint(a)\r\nprint(22)\r\nprint(11)', "<string>", "exec")
+                    self.curframe.f_code = newCO
+                    self.curframe.f_lineno = 777
+                    self.stack[self.curindex] = self.stack[self.curindex][0], 1
+                else:
+                    self.curframe.f_lineno = arg
+                    self.stack[self.curindex] = self.stack[self.curindex][0], arg
+
+                # self.stack[self.curindex] = self.stack[self.curindex][0], arg
                 self.print_stack_entry(self.stack[self.curindex])
             except ValueError as e:
                 self.error('Jump failed: %s' % e)

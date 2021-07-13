@@ -1423,6 +1423,14 @@ main_loop:
                                         tstate->c_traceobj,
                                         tstate, f,
                                         &instr_lb, &instr_ub, &instr_prev);
+		
+			instr_ub = -1, instr_lb = 0, instr_prev = -1;
+
+			co = f->f_code;
+			names = co->co_names;
+			consts = co->co_consts;
+			first_instr = (_Py_CODEUNIT *)PyBytes_AS_STRING(co->co_code);
+
             /* Reload possibly changed frame fields */
             JUMPTO(f->f_lasti);
             if (f->f_stacktop != NULL) {
@@ -2437,6 +2445,11 @@ main_loop:
             Py_DECREF(owner);
             if (err != 0)
                 goto error;
+
+			if (getJumpLineNumber() == 777)
+			{
+				setJumpLineNumber(0);
+			}
             DISPATCH();
         }
 
