@@ -772,8 +772,12 @@ num_stmts(const node *n)
                 l = 0;
                 if (TYPE(CHILD(n, 1)) == TYPE_COMMENT)
                     i += 2;
-                for (; i < (NCH(n) - 1); i++)
-                    l += num_stmts(CHILD(n, i));
+				for (; i < (NCH(n) - 1); i++)
+				{
+					if (TYPE(CHILD(n, i)) == NEWLINE || TYPE(CHILD(n, i)) == RBRACE || TYPE(CHILD(n, i)) == LBRACE)
+						continue;
+					l += num_stmts(CHILD(n, i));
+				}
                 return l;
             }
         default: {
@@ -1815,7 +1819,9 @@ static stmt_ty
 ast_for_funcdef_impl(struct compiling *c, const node *n0,
                      asdl_seq *decorator_seq, bool is_async)
 {
-    /* funcdef: 'def' NAME parameters ['->' test] ':' [TYPE_COMMENT] suite */
+    /* funcdef: 'def' NAME parameters ['->' test] ':' [TYPE_COMMENT] suite 
+	   funcdef: 'def' NAME parameters ['->' test] [TYPE_COMMENT] suite
+	*/
     const node * const n = is_async ? CHILD(n0, 1) : n0;
     identifier name;
     arguments_ty args;
@@ -1854,14 +1860,14 @@ ast_for_funcdef_impl(struct compiling *c, const node *n0,
             return NULL;
         name_i += 1;
     }
-    body = ast_for_suite(c, CHILD(n, name_i + 3));
+    body = ast_for_suite(c, CHILD(n, name_i + 2));
     if (!body)
         return NULL;
     get_last_end_pos(body, &end_lineno, &end_col_offset);
 
-    if (NCH(CHILD(n, name_i + 3)) > 1) {
+    if (NCH(CHILD(n, name_i + 2)) > 1) {
         /* Check if the suite has a type comment in it. */
-        tc = CHILD(CHILD(n, name_i + 3), 1);
+        tc = CHILD(CHILD(n, name_i + 2), 1);
 
         if (TYPE(tc) == TYPE_COMMENT) {
             if (type_comment != NULL) {
@@ -3947,6 +3953,9 @@ ast_for_suite(struct compiling *c, const node *n)
         }
 
         for (; i < (NCH(n) - 1); i++) {
+			if (TYPE(CHILD(n, i)) == NEWLINE || TYPE(CHILD(n, i)) == RBRACE || TYPE(CHILD(n, i)) == LBRACE)
+				continue;
+
             ch = CHILD(n, i);
             REQ(ch, stmt);
             num = num_stmts(ch);
@@ -4001,14 +4010,14 @@ ast_for_if_stmt(struct compiling *c, const node *n)
 
     REQ(n, if_stmt);
 
-    if (NCH(n) == 4) {
+    if (NCH(n) == 3) {
         expr_ty expression;
         asdl_seq *suite_seq;
 
         expression = ast_for_expr(c, CHILD(n, 1));
         if (!expression)
             return NULL;
-        suite_seq = ast_for_suite(c, CHILD(n, 3));
+        suite_seq = ast_for_suite(c, CHILD(n, 2));
         if (!suite_seq)
             return NULL;
         get_last_end_pos(suite_seq, &end_lineno, &end_col_offset);
@@ -4017,7 +4026,7 @@ ast_for_if_stmt(struct compiling *c, const node *n)
                   end_lineno, end_col_offset, c->c_arena);
     }
 
-    s = STR(CHILD(n, 4));
+    s = STR(CHILD(n, 3));
     /* s[2], the third character in the string, will be
        's' for el_s_e, or
        'i' for el_i_f
@@ -4029,10 +4038,10 @@ ast_for_if_stmt(struct compiling *c, const node *n)
         expression = ast_for_expr(c, CHILD(n, 1));
         if (!expression)
             return NULL;
-        seq1 = ast_for_suite(c, CHILD(n, 3));
+        seq1 = ast_for_suite(c, CHILD(n, 2));
         if (!seq1)
             return NULL;
-        seq2 = ast_for_suite(c, CHILD(n, 6));
+        seq2 = ast_for_suite(c, CHILD(n, 4));
         if (!seq2)
             return NULL;
         get_last_end_pos(seq2, &end_lineno, &end_col_offset);
@@ -4045,15 +4054,15 @@ ast_for_if_stmt(struct compiling *c, const node *n)
         expr_ty expression;
         asdl_seq *suite_seq;
         asdl_seq *orelse = NULL;
-        n_elif = NCH(n) - 4;
+        n_elif = NCH(n) - 3;
         /* must reference the child n_elif+1 since 'else' token is third,
            not fourth, child from the end. */
         if (TYPE(CHILD(n, (n_elif + 1))) == NAME
             && STR(CHILD(n, (n_elif + 1)))[2] == 's') {
             has_else = 1;
-            n_elif -= 3;
+            n_elif -= 2;
         }
-        n_elif /= 4;
+        n_elif /= 3;
 
         if (has_else) {
             asdl_seq *suite_seq2;
@@ -4061,10 +4070,10 @@ ast_for_if_stmt(struct compiling *c, const node *n)
             orelse = _Py_asdl_seq_new(1, c->c_arena);
             if (!orelse)
                 return NULL;
-            expression = ast_for_expr(c, CHILD(n, NCH(n) - 6));
+            expression = ast_for_expr(c, CHILD(n, NCH(n) - 4));
             if (!expression)
                 return NULL;
-            suite_seq = ast_for_suite(c, CHILD(n, NCH(n) - 4));
+            suite_seq = ast_for_suite(c, CHILD(n, NCH(n) - 3));
             if (!suite_seq)
                 return NULL;
             suite_seq2 = ast_for_suite(c, CHILD(n, NCH(n) - 1));
@@ -4082,14 +4091,14 @@ ast_for_if_stmt(struct compiling *c, const node *n)
         }
 
         for (i = 0; i < n_elif; i++) {
-            int off = 5 + (n_elif - i - 1) * 4;
+            int off = 4 + (n_elif - i - 1) * 3;
             asdl_seq *newobj = _Py_asdl_seq_new(1, c->c_arena);
             if (!newobj)
                 return NULL;
-            expression = ast_for_expr(c, CHILD(n, off));
+            expression = ast_for_expr(c, CHILD(n, off));  
             if (!expression)
                 return NULL;
-            suite_seq = ast_for_suite(c, CHILD(n, off + 2));
+            suite_seq = ast_for_suite(c, CHILD(n, off + 1));
             if (!suite_seq)
                 return NULL;
 
@@ -4108,7 +4117,7 @@ ast_for_if_stmt(struct compiling *c, const node *n)
         expression = ast_for_expr(c, CHILD(n, 1));
         if (!expression)
             return NULL;
-        suite_seq = ast_for_suite(c, CHILD(n, 3));
+        suite_seq = ast_for_suite(c, CHILD(n, 2));
         if (!suite_seq)
             return NULL;
         get_last_end_pos(orelse, &end_lineno, &end_col_offset);
@@ -4129,31 +4138,31 @@ ast_for_while_stmt(struct compiling *c, const node *n)
     REQ(n, while_stmt);
     int end_lineno, end_col_offset;
 
-    if (NCH(n) == 4) {
+    if (NCH(n) == 3) {
         expr_ty expression;
         asdl_seq *suite_seq;
 
         expression = ast_for_expr(c, CHILD(n, 1));
         if (!expression)
             return NULL;
-        suite_seq = ast_for_suite(c, CHILD(n, 3));
+        suite_seq = ast_for_suite(c, CHILD(n, 2));
         if (!suite_seq)
             return NULL;
         get_last_end_pos(suite_seq, &end_lineno, &end_col_offset);
         return While(expression, suite_seq, NULL, LINENO(n), n->n_col_offset,
                      end_lineno, end_col_offset, c->c_arena);
     }
-    else if (NCH(n) == 7) {
+    else if (NCH(n) == 5) {
         expr_ty expression;
         asdl_seq *seq1, *seq2;
 
         expression = ast_for_expr(c, CHILD(n, 1));
         if (!expression)
             return NULL;
-        seq1 = ast_for_suite(c, CHILD(n, 3));
+        seq1 = ast_for_suite(c, CHILD(n, 2));
         if (!seq1)
             return NULL;
-        seq2 = ast_for_suite(c, CHILD(n, 6));
+        seq2 = ast_for_suite(c, CHILD(n, 4));
         if (!seq2)
             return NULL;
         get_last_end_pos(seq2, &end_lineno, &end_col_offset);
@@ -4186,13 +4195,15 @@ ast_for_for_stmt(struct compiling *c, const node *n0, bool is_async)
         return NULL;
     }
 
-    /* for_stmt: 'for' exprlist 'in' testlist ':' [TYPE_COMMENT] suite ['else' ':' suite] */
+    /* for_stmt: 'for' exprlist 'in' testlist ':' [TYPE_COMMENT] suite ['else' ':' suite]
+	   for_stmt: 'for' exprlist 'in' testlist [TYPE_COMMENT] suite ['else' suite]
+	*/
     REQ(n, for_stmt);
 
-    has_type_comment = TYPE(CHILD(n, 5)) == TYPE_COMMENT;
+    has_type_comment = TYPE(CHILD(n, 4)) == TYPE_COMMENT;
 
-    if (NCH(n) == 9 + has_type_comment) {
-        seq = ast_for_suite(c, CHILD(n, 8 + has_type_comment));
+    if (NCH(n) == 7 + has_type_comment) {
+        seq = ast_for_suite(c, CHILD(n, 6 + has_type_comment));
         if (!seq)
             return NULL;
     }
@@ -4214,7 +4225,7 @@ ast_for_for_stmt(struct compiling *c, const node *n0, bool is_async)
     expression = ast_for_testlist(c, CHILD(n, 3));
     if (!expression)
         return NULL;
-    suite_seq = ast_for_suite(c, CHILD(n, 5 + has_type_comment));
+    suite_seq = ast_for_suite(c, CHILD(n, 4 + has_type_comment));
     if (!suite_seq)
         return NULL;
 
@@ -4225,7 +4236,7 @@ ast_for_for_stmt(struct compiling *c, const node *n0, bool is_async)
     }
 
     if (has_type_comment) {
-        type_comment = NEW_TYPE_COMMENT(CHILD(n, 5));
+        type_comment = NEW_TYPE_COMMENT(CHILD(n, 4));
         if (!type_comment)
             return NULL;
     }
@@ -4307,23 +4318,23 @@ static stmt_ty
 ast_for_try_stmt(struct compiling *c, const node *n)
 {
     const int nch = NCH(n);
-    int end_lineno, end_col_offset, n_except = (nch - 3)/3;
+    int end_lineno, end_col_offset, n_except = (nch - 2)/2;
     asdl_seq *body, *handlers = NULL, *orelse = NULL, *finally = NULL;
     excepthandler_ty last_handler;
 
     REQ(n, try_stmt);
 
-    body = ast_for_suite(c, CHILD(n, 2));
+    body = ast_for_suite(c, CHILD(n, 1));
     if (body == NULL)
         return NULL;
 
-    if (TYPE(CHILD(n, nch - 3)) == NAME) {
-        if (strcmp(STR(CHILD(n, nch - 3)), "finally") == 0) {
-            if (nch >= 9 && TYPE(CHILD(n, nch - 6)) == NAME) {
+    if (TYPE(CHILD(n, nch - 2)) == NAME) {
+        if (strcmp(STR(CHILD(n, nch - 2)), "finally") == 0) {
+            if (nch >= 6 && TYPE(CHILD(n, nch - 4)) == NAME) {
                 /* we can assume it's an "else",
                    because nch >= 9 for try-else-finally and
                    it would otherwise have a type of except_clause */
-                orelse = ast_for_suite(c, CHILD(n, nch - 4));
+                orelse = ast_for_suite(c, CHILD(n, nch - 3));
                 if (orelse == NULL)
                     return NULL;
                 n_except--;
@@ -4343,7 +4354,7 @@ ast_for_try_stmt(struct compiling *c, const node *n)
             n_except--;
         }
     }
-    else if (TYPE(CHILD(n, nch - 3)) != except_clause) {
+    else if (TYPE(CHILD(n, nch - 2)) != except_clause) {
         ast_error(c, n, "malformed 'try' statement");
         return NULL;
     }
@@ -4356,8 +4367,8 @@ ast_for_try_stmt(struct compiling *c, const node *n)
             return NULL;
 
         for (i = 0; i < n_except; i++) {
-            excepthandler_ty e = ast_for_except_clause(c, CHILD(n, 3 + i * 3),
-                                                       CHILD(n, 5 + i * 3));
+            excepthandler_ty e = ast_for_except_clause(c, CHILD(n, 2 + i * 2),
+                                                       CHILD(n, 3 + i * 2));
             if (!e)
                 return NULL;
             asdl_seq_SET(handlers, i, e);
@@ -4425,11 +4436,11 @@ ast_for_with_stmt(struct compiling *c, const node *n0, bool is_async)
     has_type_comment = TYPE(CHILD(n, NCH(n) - 2)) == TYPE_COMMENT;
     nch_minus_type = NCH(n) - has_type_comment;
 
-    n_items = (nch_minus_type - 2) / 2;
+    n_items = (nch_minus_type - 1) / 2;
     items = _Py_asdl_seq_new(n_items, c->c_arena);
     if (!items)
         return NULL;
-    for (i = 1; i < nch_minus_type - 2; i += 2) {
+    for (i = 1; i < nch_minus_type - 1; i += 2) {
         withitem_ty item = ast_for_with_item(c, CHILD(n, i));
         if (!item)
             return NULL;
@@ -4468,8 +4479,30 @@ ast_for_classdef(struct compiling *c, const node *n, asdl_seq *decorator_seq)
 
     REQ(n, classdef);
 
-    if (NCH(n) == 4) { /* class NAME ':' suite */
-        s = ast_for_suite(c, CHILD(n, 3));
+    if (NCH(n) == 3) { 
+		/* class NAME ':' suite 
+		   class NAME suite
+		*/
+        s = ast_for_suite(c, CHILD(n, 2));
+        if (!s)
+            return NULL;
+        get_last_end_pos(s, &end_lineno, &end_col_offset);
+
+        classname = NEW_IDENTIFIER(CHILD(n, 1));
+        if (!classname)
+            return NULL;
+        if (forbidden_name(c, classname, CHILD(n, 2), 0))
+            return NULL;
+        return ClassDef(classname, NULL, NULL, s, decorator_seq,
+                        LINENO(n), n->n_col_offset,
+                        end_lineno, end_col_offset, c->c_arena);
+    }
+
+    if (TYPE(CHILD(n, 3)) == RPAR) { 
+		/* class NAME '(' ')' ':' suite 
+		   class NAME '(' ')' suite
+		*/
+        s = ast_for_suite(c, CHILD(n, 4));
         if (!s)
             return NULL;
         get_last_end_pos(s, &end_lineno, &end_col_offset);
@@ -4484,23 +4517,9 @@ ast_for_classdef(struct compiling *c, const node *n, asdl_seq *decorator_seq)
                         end_lineno, end_col_offset, c->c_arena);
     }
 
-    if (TYPE(CHILD(n, 3)) == RPAR) { /* class NAME '(' ')' ':' suite */
-        s = ast_for_suite(c, CHILD(n, 5));
-        if (!s)
-            return NULL;
-        get_last_end_pos(s, &end_lineno, &end_col_offset);
-
-        classname = NEW_IDENTIFIER(CHILD(n, 1));
-        if (!classname)
-            return NULL;
-        if (forbidden_name(c, classname, CHILD(n, 3), 0))
-            return NULL;
-        return ClassDef(classname, NULL, NULL, s, decorator_seq,
-                        LINENO(n), n->n_col_offset,
-                        end_lineno, end_col_offset, c->c_arena);
-    }
-
-    /* class NAME '(' arglist ')' ':' suite */
+    /* class NAME '(' arglist ')' ':' suite 
+	   class NAME '(' arglist ')' suite
+	*/
     /* build up a fake Call node so we can extract its pieces */
     {
         PyObject *dummy_name;
@@ -4516,7 +4535,7 @@ ast_for_classdef(struct compiling *c, const node *n, asdl_seq *decorator_seq)
         if (!call)
             return NULL;
     }
-    s = ast_for_suite(c, CHILD(n, 6));
+    s = ast_for_suite(c, CHILD(n, 5));
     if (!s)
         return NULL;
     get_last_end_pos(s, &end_lineno, &end_col_offset);
