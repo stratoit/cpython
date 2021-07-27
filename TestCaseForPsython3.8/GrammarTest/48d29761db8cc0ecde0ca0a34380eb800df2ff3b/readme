@@ -1,0 +1,7 @@
+Test for each statement which had block.
+
+indent -> LBRACE, dedent -> RBRACE
+Tokenizer ignore indent dedent.
+ast.c's function for parsing index location changed.
+
+※※※This commit never use '\t' inner block.※※※
