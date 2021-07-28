@@ -736,59 +736,120 @@ new_type_comment(const char *s, struct compiling *c)
 #define NEW_TYPE_COMMENT(n) new_type_comment(STR(n), c)
 
 static int
+num_stmts_python(const node *n)
+{
+	int i, l;
+	node *ch;
+
+	switch (TYPE(n)) {
+	case single_input:
+		if (TYPE(CHILD(n, 0)) == NEWLINE)
+			return 0;
+		else
+			return num_stmts(CHILD(n, 0));
+	case file_input:
+		l = 0;
+		for (i = 0; i < NCH(n); i++) {
+			ch = CHILD(n, i);
+			if (TYPE(ch) == stmt)
+				l += num_stmts(ch);
+		}
+		return l;
+	case stmt:
+		return num_stmts(CHILD(n, 0));
+	case compound_stmt:
+		return 1;
+	case simple_stmt:
+		return NCH(n) / 2; /* Divide by 2 to remove count of semi-colons */
+	case suite:
+	case func_body_suite:
+		/* func_body_suite: simple_stmt | NEWLINE [TYPE_COMMENT NEWLINE] INDENT stmt+ DEDENT */
+		/* suite: simple_stmt | NEWLINE INDENT stmt+ DEDENT */
+		if (NCH(n) == 1)
+			return num_stmts(CHILD(n, 0));
+		else {
+			i = 2;
+			l = 0;
+			if (TYPE(CHILD(n, 1)) == TYPE_COMMENT)
+				i += 2;
+			for (; i < (NCH(n) - 1); i++)
+				l += num_stmts(CHILD(n, i));
+			return l;
+		}
+	default: {
+		char buf[128];
+
+		sprintf(buf, "Non-statement found: %d %d",
+			TYPE(n), NCH(n));
+		Py_FatalError(buf);
+	}
+	}
+	Py_UNREACHABLE();
+}
+
+static int
+num_stmts_psython(const node *n)
+{
+	int i, l;
+	node *ch;
+
+	switch (TYPE(n)) {
+	case single_input:
+		if (TYPE(CHILD(n, 0)) == NEWLINE)
+			return 0;
+		else
+			return num_stmts(CHILD(n, 0));
+	case file_input:
+		l = 0;
+		for (i = 0; i < NCH(n); i++) {
+			ch = CHILD(n, i);
+			if (TYPE(ch) == stmt)
+				l += num_stmts(ch);
+		}
+		return l;
+	case stmt:
+		return num_stmts(CHILD(n, 0));
+	case compound_stmt:
+		return 1;
+	case simple_stmt:
+		return NCH(n) / 2; /* Divide by 2 to remove count of semi-colons */
+	case suite:
+	case func_body_suite:
+		/* func_body_suite: simple_stmt | NEWLINE [TYPE_COMMENT NEWLINE] INDENT stmt+ DEDENT */
+		/* suite: simple_stmt | NEWLINE INDENT stmt+ DEDENT */
+		if (NCH(n) == 1)
+			return num_stmts(CHILD(n, 0));
+		else {
+			i = 2;
+			l = 0;
+			if (TYPE(CHILD(n, 1)) == TYPE_COMMENT)
+				i += 2;
+			for (; i < (NCH(n) - 1); i++)
+			{
+				if (TYPE(CHILD(n, i)) == NEWLINE || TYPE(CHILD(n, i)) == RBRACE || TYPE(CHILD(n, i)) == LBRACE)
+					continue;
+				l += num_stmts(CHILD(n, i));
+			}
+			return l;
+		}
+	default: {
+		char buf[128];
+
+		sprintf(buf, "Non-statement found: %d %d",
+			TYPE(n), NCH(n));
+		Py_FatalError(buf);
+	}
+	}
+	Py_UNREACHABLE();
+}
+
+static int
 num_stmts(const node *n)
 {
-    int i, l;
-    node *ch;
-
-    switch (TYPE(n)) {
-        case single_input:
-            if (TYPE(CHILD(n, 0)) == NEWLINE)
-                return 0;
-            else
-                return num_stmts(CHILD(n, 0));
-        case file_input:
-            l = 0;
-            for (i = 0; i < NCH(n); i++) {
-                ch = CHILD(n, i);
-                if (TYPE(ch) == stmt)
-                    l += num_stmts(ch);
-            }
-            return l;
-        case stmt:
-            return num_stmts(CHILD(n, 0));
-        case compound_stmt:
-            return 1;
-        case simple_stmt:
-            return NCH(n) / 2; /* Divide by 2 to remove count of semi-colons */
-        case suite:
-        case func_body_suite:
-            /* func_body_suite: simple_stmt | NEWLINE [TYPE_COMMENT NEWLINE] INDENT stmt+ DEDENT */
-            /* suite: simple_stmt | NEWLINE INDENT stmt+ DEDENT */
-            if (NCH(n) == 1)
-                return num_stmts(CHILD(n, 0));
-            else {
-                i = 2;
-                l = 0;
-                if (TYPE(CHILD(n, 1)) == TYPE_COMMENT)
-                    i += 2;
-				for (; i < (NCH(n) - 1); i++)
-				{
-					if (TYPE(CHILD(n, i)) == NEWLINE || TYPE(CHILD(n, i)) == RBRACE || TYPE(CHILD(n, i)) == LBRACE)
-						continue;
-					l += num_stmts(CHILD(n, i));
-				}
-                return l;
-            }
-        default: {
-            char buf[128];
-
-            sprintf(buf, "Non-statement found: %d %d",
-                    TYPE(n), NCH(n));
-            Py_FatalError(buf);
-        }
-    }
-    Py_UNREACHABLE();
+	if (isCurrentFilePsython())
+		return num_stmts_psython(n);
+	else
+		return num_stmts_python(n);
 }
 
 /* Transform the CST rooted at node * to the appropriate AST
@@ -1816,76 +1877,155 @@ ast_for_decorators(struct compiling *c, const node *n)
 }
 
 static stmt_ty
+ast_for_funcdef_impl_python(struct compiling *c, const node *n0,
+	asdl_seq *decorator_seq, bool is_async)
+{
+	/* funcdef: 'def' NAME parameters ['->' test] ':' [TYPE_COMMENT] suite */
+	const node * const n = is_async ? CHILD(n0, 1) : n0;
+	identifier name;
+	arguments_ty args;
+	asdl_seq *body;
+	expr_ty returns = NULL;
+	int name_i = 1;
+	int end_lineno, end_col_offset;
+	node *tc;
+	string type_comment = NULL;
+
+	if (is_async && c->c_feature_version < 5) {
+		ast_error(c, n,
+			"Async functions are only supported in Python 3.5 and greater");
+		return NULL;
+	}
+
+	REQ(n, funcdef);
+
+	name = NEW_IDENTIFIER(CHILD(n, name_i));
+	if (!name)
+		return NULL;
+	if (forbidden_name(c, name, CHILD(n, name_i), 0))
+		return NULL;
+	args = ast_for_arguments(c, CHILD(n, name_i + 1));
+	if (!args)
+		return NULL;
+	if (TYPE(CHILD(n, name_i + 2)) == RARROW) {
+		returns = ast_for_expr(c, CHILD(n, name_i + 3));
+		if (!returns)
+			return NULL;
+		name_i += 2;
+	}
+	if (TYPE(CHILD(n, name_i + 3)) == TYPE_COMMENT) {
+		type_comment = NEW_TYPE_COMMENT(CHILD(n, name_i + 3));
+		if (!type_comment)
+			return NULL;
+		name_i += 1;
+	}
+	body = ast_for_suite(c, CHILD(n, name_i + 3));
+	if (!body)
+		return NULL;
+	get_last_end_pos(body, &end_lineno, &end_col_offset);
+
+	if (NCH(CHILD(n, name_i + 3)) > 1) {
+		/* Check if the suite has a type comment in it. */
+		tc = CHILD(CHILD(n, name_i + 3), 1);
+
+		if (TYPE(tc) == TYPE_COMMENT) {
+			if (type_comment != NULL) {
+				ast_error(c, n, "Cannot have two type comments on def");
+				return NULL;
+			}
+			type_comment = NEW_TYPE_COMMENT(tc);
+			if (!type_comment)
+				return NULL;
+		}
+	}
+
+	if (is_async)
+		return AsyncFunctionDef(name, args, body, decorator_seq, returns, type_comment,
+			LINENO(n0), n0->n_col_offset, end_lineno, end_col_offset, c->c_arena);
+	else
+		return FunctionDef(name, args, body, decorator_seq, returns, type_comment,
+			LINENO(n), n->n_col_offset, end_lineno, end_col_offset, c->c_arena);
+}
+
+static stmt_ty
+ast_for_funcdef_impl_psython(struct compiling *c, const node *n0,
+	asdl_seq *decorator_seq, bool is_async)
+{
+	/* funcdef: 'def' NAME parameters ['->' test] [TYPE_COMMENT] suite */
+	const node * const n = is_async ? CHILD(n0, 1) : n0;
+	identifier name;
+	arguments_ty args;
+	asdl_seq *body;
+	expr_ty returns = NULL;
+	int name_i = 1;
+	int end_lineno, end_col_offset;
+	node *tc;
+	string type_comment = NULL;
+
+	if (is_async && c->c_feature_version < 5) {
+		ast_error(c, n,
+			"Async functions are only supported in Python 3.5 and greater");
+		return NULL;
+	}
+
+	REQ(n, funcdef);
+
+	name = NEW_IDENTIFIER(CHILD(n, name_i));
+	if (!name)
+		return NULL;
+	if (forbidden_name(c, name, CHILD(n, name_i), 0))
+		return NULL;
+	args = ast_for_arguments(c, CHILD(n, name_i + 1));
+	if (!args)
+		return NULL;
+	if (TYPE(CHILD(n, name_i + 2)) == RARROW) {
+		returns = ast_for_expr(c, CHILD(n, name_i + 3));
+		if (!returns)
+			return NULL;
+		name_i += 2;
+	}
+	if (TYPE(CHILD(n, name_i + 3)) == TYPE_COMMENT) {
+		type_comment = NEW_TYPE_COMMENT(CHILD(n, name_i + 3));
+		if (!type_comment)
+			return NULL;
+		name_i += 1;
+	}
+	body = ast_for_suite(c, CHILD(n, name_i + 2));
+	if (!body)
+		return NULL;
+	get_last_end_pos(body, &end_lineno, &end_col_offset);
+
+	if (NCH(CHILD(n, name_i + 2)) > 1) {
+		/* Check if the suite has a type comment in it. */
+		tc = CHILD(CHILD(n, name_i + 2), 1);
+
+		if (TYPE(tc) == TYPE_COMMENT) {
+			if (type_comment != NULL) {
+				ast_error(c, n, "Cannot have two type comments on def");
+				return NULL;
+			}
+			type_comment = NEW_TYPE_COMMENT(tc);
+			if (!type_comment)
+				return NULL;
+		}
+	}
+
+	if (is_async)
+		return AsyncFunctionDef(name, args, body, decorator_seq, returns, type_comment,
+			LINENO(n0), n0->n_col_offset, end_lineno, end_col_offset, c->c_arena);
+	else
+		return FunctionDef(name, args, body, decorator_seq, returns, type_comment,
+			LINENO(n), n->n_col_offset, end_lineno, end_col_offset, c->c_arena);
+}
+
+static stmt_ty
 ast_for_funcdef_impl(struct compiling *c, const node *n0,
                      asdl_seq *decorator_seq, bool is_async)
 {
-    /* funcdef: 'def' NAME parameters ['->' test] ':' [TYPE_COMMENT] suite 
-	   funcdef: 'def' NAME parameters ['->' test] [TYPE_COMMENT] suite
-	*/
-    const node * const n = is_async ? CHILD(n0, 1) : n0;
-    identifier name;
-    arguments_ty args;
-    asdl_seq *body;
-    expr_ty returns = NULL;
-    int name_i = 1;
-    int end_lineno, end_col_offset;
-    node *tc;
-    string type_comment = NULL;
-
-    if (is_async && c->c_feature_version < 5) {
-        ast_error(c, n,
-                  "Async functions are only supported in Python 3.5 and greater");
-        return NULL;
-    }
-
-    REQ(n, funcdef);
-
-    name = NEW_IDENTIFIER(CHILD(n, name_i));
-    if (!name)
-        return NULL;
-    if (forbidden_name(c, name, CHILD(n, name_i), 0))
-        return NULL;
-    args = ast_for_arguments(c, CHILD(n, name_i + 1));
-    if (!args)
-        return NULL;
-    if (TYPE(CHILD(n, name_i+2)) == RARROW) {
-        returns = ast_for_expr(c, CHILD(n, name_i + 3));
-        if (!returns)
-            return NULL;
-        name_i += 2;
-    }
-    if (TYPE(CHILD(n, name_i + 3)) == TYPE_COMMENT) {
-        type_comment = NEW_TYPE_COMMENT(CHILD(n, name_i + 3));
-        if (!type_comment)
-            return NULL;
-        name_i += 1;
-    }
-    body = ast_for_suite(c, CHILD(n, name_i + 2));
-    if (!body)
-        return NULL;
-    get_last_end_pos(body, &end_lineno, &end_col_offset);
-
-    if (NCH(CHILD(n, name_i + 2)) > 1) {
-        /* Check if the suite has a type comment in it. */
-        tc = CHILD(CHILD(n, name_i + 2), 1);
-
-        if (TYPE(tc) == TYPE_COMMENT) {
-            if (type_comment != NULL) {
-                ast_error(c, n, "Cannot have two type comments on def");
-                return NULL;
-            }
-            type_comment = NEW_TYPE_COMMENT(tc);
-            if (!type_comment)
-                return NULL;
-        }
-    }
-
-    if (is_async)
-        return AsyncFunctionDef(name, args, body, decorator_seq, returns, type_comment,
-                                LINENO(n0), n0->n_col_offset, end_lineno, end_col_offset, c->c_arena);
-    else
-        return FunctionDef(name, args, body, decorator_seq, returns, type_comment,
-                           LINENO(n), n->n_col_offset, end_lineno, end_col_offset, c->c_arena);
+	if (isCurrentFilePsython())
+		return ast_for_funcdef_impl_psython(c, n0, decorator_seq, is_async);
+	else
+		return ast_for_funcdef_impl_python(c, n0, decorator_seq, is_async);
 }
 
 static stmt_ty
@@ -3912,80 +4052,163 @@ ast_for_assert_stmt(struct compiling *c, const node *n)
 }
 
 static asdl_seq *
-ast_for_suite(struct compiling *c, const node *n)
+ast_for_suite_python(struct compiling *c, const node *n)
 {
-    /* suite: simple_stmt | NEWLINE [TYPE_COMMENT NEWLINE] INDENT stmt+ DEDENT */
-    asdl_seq *seq;
-    stmt_ty s;
-    int i, total, num, end, pos = 0;
-    node *ch;
+	/* suite: simple_stmt | NEWLINE [TYPE_COMMENT NEWLINE] INDENT stmt+ DEDENT */
+	asdl_seq *seq;
+	stmt_ty s;
+	int i, total, num, end, pos = 0;
+	node *ch;
 
-    if (TYPE(n) != func_body_suite) {
-        REQ(n, suite);
-    }
+	if (TYPE(n) != func_body_suite) {
+		REQ(n, suite);
+	}
 
-    total = num_stmts(n);
-    seq = _Py_asdl_seq_new(total, c->c_arena);
-    if (!seq)
-        return NULL;
-    if (TYPE(CHILD(n, 0)) == simple_stmt) {
-        n = CHILD(n, 0);
-        /* simple_stmt always ends with a NEWLINE,
-           and may have a trailing SEMI
-        */
-        end = NCH(n) - 1;
-        if (TYPE(CHILD(n, end - 1)) == SEMI)
-            end--;
-        /* loop by 2 to skip semi-colons */
-        for (i = 0; i < end; i += 2) {
-            ch = CHILD(n, i);
-            s = ast_for_stmt(c, ch);
-            if (!s)
-                return NULL;
-            asdl_seq_SET(seq, pos++, s);
-        }
-    }
-    else {
-        i = 2;
-        if (TYPE(CHILD(n, 1)) == TYPE_COMMENT) {
-            i += 2;
-            REQ(CHILD(n, 2), NEWLINE);
-        }
+	total = num_stmts(n);
+	seq = _Py_asdl_seq_new(total, c->c_arena);
+	if (!seq)
+		return NULL;
+	if (TYPE(CHILD(n, 0)) == simple_stmt) {
+		n = CHILD(n, 0);
+		/* simple_stmt always ends with a NEWLINE,
+		   and may have a trailing SEMI
+		*/
+		end = NCH(n) - 1;
+		if (TYPE(CHILD(n, end - 1)) == SEMI)
+			end--;
+		/* loop by 2 to skip semi-colons */
+		for (i = 0; i < end; i += 2) {
+			ch = CHILD(n, i);
+			s = ast_for_stmt(c, ch);
+			if (!s)
+				return NULL;
+			asdl_seq_SET(seq, pos++, s);
+		}
+	}
+	else {
+		i = 2;
+		if (TYPE(CHILD(n, 1)) == TYPE_COMMENT) {
+			i += 2;
+			REQ(CHILD(n, 2), NEWLINE);
+		}
 
-        for (; i < (NCH(n) - 1); i++) {
+		for (; i < (NCH(n) - 1); i++) {
+			ch = CHILD(n, i);
+			REQ(ch, stmt);
+			num = num_stmts(ch);
+			if (num == 1) {
+				/* small_stmt or compound_stmt with only one child */
+				s = ast_for_stmt(c, ch);
+				if (!s)
+					return NULL;
+				asdl_seq_SET(seq, pos++, s);
+			}
+			else {
+				int j;
+				ch = CHILD(ch, 0);
+				REQ(ch, simple_stmt);
+				for (j = 0; j < NCH(ch); j += 2) {
+					/* statement terminates with a semi-colon ';' */
+					if (NCH(CHILD(ch, j)) == 0) {
+						assert((j + 1) == NCH(ch));
+						break;
+					}
+					s = ast_for_stmt(c, CHILD(ch, j));
+					if (!s)
+						return NULL;
+					asdl_seq_SET(seq, pos++, s);
+				}
+			}
+		}
+	}
+	assert(pos == seq->size);
+	return seq;
+}
+
+static asdl_seq *
+ast_for_suite_psython(struct compiling *c, const node *n)
+{
+	/* suite: simple_stmt | NEWLINE [TYPE_COMMENT NEWLINE] INDENT stmt+ DEDENT */
+	asdl_seq *seq;
+	stmt_ty s;
+	int i, total, num, end, pos = 0;
+	node *ch;
+
+	if (TYPE(n) != func_body_suite) {
+		REQ(n, suite);
+	}
+
+	total = num_stmts(n);
+	seq = _Py_asdl_seq_new(total, c->c_arena);
+	if (!seq)
+		return NULL;
+	if (TYPE(CHILD(n, 0)) == simple_stmt) {
+		n = CHILD(n, 0);
+		/* simple_stmt always ends with a NEWLINE,
+		   and may have a trailing SEMI
+		*/
+		end = NCH(n) - 1;
+		if (TYPE(CHILD(n, end - 1)) == SEMI)
+			end--;
+		/* loop by 2 to skip semi-colons */
+		for (i = 0; i < end; i += 2) {
+			ch = CHILD(n, i);
+			s = ast_for_stmt(c, ch);
+			if (!s)
+				return NULL;
+			asdl_seq_SET(seq, pos++, s);
+		}
+	}
+	else {
+		i = 2;
+		if (TYPE(CHILD(n, 1)) == TYPE_COMMENT) {
+			i += 2;
+			REQ(CHILD(n, 2), NEWLINE);
+		}
+
+		for (; i < (NCH(n) - 1); i++) {
 			if (TYPE(CHILD(n, i)) == NEWLINE || TYPE(CHILD(n, i)) == RBRACE || TYPE(CHILD(n, i)) == LBRACE)
 				continue;
 
-            ch = CHILD(n, i);
-            REQ(ch, stmt);
-            num = num_stmts(ch);
-            if (num == 1) {
-                /* small_stmt or compound_stmt with only one child */
-                s = ast_for_stmt(c, ch);
-                if (!s)
-                    return NULL;
-                asdl_seq_SET(seq, pos++, s);
-            }
-            else {
-                int j;
-                ch = CHILD(ch, 0);
-                REQ(ch, simple_stmt);
-                for (j = 0; j < NCH(ch); j += 2) {
-                    /* statement terminates with a semi-colon ';' */
-                    if (NCH(CHILD(ch, j)) == 0) {
-                        assert((j + 1) == NCH(ch));
-                        break;
-                    }
-                    s = ast_for_stmt(c, CHILD(ch, j));
-                    if (!s)
-                        return NULL;
-                    asdl_seq_SET(seq, pos++, s);
-                }
-            }
-        }
-    }
-    assert(pos == seq->size);
-    return seq;
+			ch = CHILD(n, i);
+			REQ(ch, stmt);
+			num = num_stmts(ch);
+			if (num == 1) {
+				/* small_stmt or compound_stmt with only one child */
+				s = ast_for_stmt(c, ch);
+				if (!s)
+					return NULL;
+				asdl_seq_SET(seq, pos++, s);
+			}
+			else {
+				int j;
+				ch = CHILD(ch, 0);
+				REQ(ch, simple_stmt);
+				for (j = 0; j < NCH(ch); j += 2) {
+					/* statement terminates with a semi-colon ';' */
+					if (NCH(CHILD(ch, j)) == 0) {
+						assert((j + 1) == NCH(ch));
+						break;
+					}
+					s = ast_for_stmt(c, CHILD(ch, j));
+					if (!s)
+						return NULL;
+					asdl_seq_SET(seq, pos++, s);
+				}
+			}
+		}
+	}
+	assert(pos == seq->size);
+	return seq;
+}
+
+static asdl_seq *
+ast_for_suite(struct compiling *c, const node *n)
+{
+	if (isCurrentFilePsython())
+		return ast_for_suite_psython(c, n);
+	else
+		return ast_for_suite_python(c, n);
 }
 
 static void
@@ -4000,257 +4223,536 @@ get_last_end_pos(asdl_seq *s, int *end_lineno, int *end_col_offset)
 }
 
 static stmt_ty
+ast_for_if_stmt_python(struct compiling *c, const node *n)
+{
+	/* if_stmt: 'if' test ':' suite ('elif' test ':' suite)*
+   ['else' ':' suite]
+*/
+	char *s;
+	int end_lineno, end_col_offset;
+
+	REQ(n, if_stmt);
+
+	if (NCH(n) == 4) {
+		expr_ty expression;
+		asdl_seq *suite_seq;
+
+		expression = ast_for_expr(c, CHILD(n, 1));
+		if (!expression)
+			return NULL;
+		suite_seq = ast_for_suite(c, CHILD(n, 3));
+		if (!suite_seq)
+			return NULL;
+		get_last_end_pos(suite_seq, &end_lineno, &end_col_offset);
+
+		return If(expression, suite_seq, NULL, LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	}
+
+	s = STR(CHILD(n, 4));
+	/* s[2], the third character in the string, will be
+	   's' for el_s_e, or
+	   'i' for el_i_f
+	*/
+	if (s[2] == 's') {
+		expr_ty expression;
+		asdl_seq *seq1, *seq2;
+
+		expression = ast_for_expr(c, CHILD(n, 1));
+		if (!expression)
+			return NULL;
+		seq1 = ast_for_suite(c, CHILD(n, 3));
+		if (!seq1)
+			return NULL;
+		seq2 = ast_for_suite(c, CHILD(n, 6));
+		if (!seq2)
+			return NULL;
+		get_last_end_pos(seq2, &end_lineno, &end_col_offset);
+
+		return If(expression, seq1, seq2, LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	}
+	else if (s[2] == 'i') {
+		int i, n_elif, has_else = 0;
+		expr_ty expression;
+		asdl_seq *suite_seq;
+		asdl_seq *orelse = NULL;
+		n_elif = NCH(n) - 4;
+		/* must reference the child n_elif+1 since 'else' token is third,
+		   not fourth, child from the end. */
+		if (TYPE(CHILD(n, (n_elif + 1))) == NAME
+			&& STR(CHILD(n, (n_elif + 1)))[2] == 's') {
+			has_else = 1;
+			n_elif -= 3;
+		}
+		n_elif /= 4;
+
+		if (has_else) {
+			asdl_seq *suite_seq2;
+
+			orelse = _Py_asdl_seq_new(1, c->c_arena);
+			if (!orelse)
+				return NULL;
+			expression = ast_for_expr(c, CHILD(n, NCH(n) - 6));
+			if (!expression)
+				return NULL;
+			suite_seq = ast_for_suite(c, CHILD(n, NCH(n) - 4));
+			if (!suite_seq)
+				return NULL;
+			suite_seq2 = ast_for_suite(c, CHILD(n, NCH(n) - 1));
+			if (!suite_seq2)
+				return NULL;
+			get_last_end_pos(suite_seq2, &end_lineno, &end_col_offset);
+
+			asdl_seq_SET(orelse, 0,
+				If(expression, suite_seq, suite_seq2,
+					LINENO(CHILD(n, NCH(n) - 7)),
+					CHILD(n, NCH(n) - 7)->n_col_offset,
+					end_lineno, end_col_offset, c->c_arena));
+			/* the just-created orelse handled the last elif */
+			n_elif--;
+		}
+
+		for (i = 0; i < n_elif; i++) {
+			int off = 5 + (n_elif - i - 1) * 4;
+			asdl_seq *newobj = _Py_asdl_seq_new(1, c->c_arena);
+			if (!newobj)
+				return NULL;
+			expression = ast_for_expr(c, CHILD(n, off));
+			if (!expression)
+				return NULL;
+			suite_seq = ast_for_suite(c, CHILD(n, off + 2));
+			if (!suite_seq)
+				return NULL;
+
+			if (orelse != NULL) {
+				get_last_end_pos(orelse, &end_lineno, &end_col_offset);
+			}
+			else {
+				get_last_end_pos(suite_seq, &end_lineno, &end_col_offset);
+			}
+			asdl_seq_SET(newobj, 0,
+				If(expression, suite_seq, orelse,
+					LINENO(CHILD(n, off - 1)),
+					CHILD(n, off - 1)->n_col_offset,
+					end_lineno, end_col_offset, c->c_arena));
+			orelse = newobj;
+		}
+		expression = ast_for_expr(c, CHILD(n, 1));
+		if (!expression)
+			return NULL;
+		suite_seq = ast_for_suite(c, CHILD(n, 3));
+		if (!suite_seq)
+			return NULL;
+		get_last_end_pos(orelse, &end_lineno, &end_col_offset);
+		return If(expression, suite_seq, orelse,
+			LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	}
+
+	PyErr_Format(PyExc_SystemError,
+		"unexpected token in 'if' statement: %s", s);
+	return NULL;
+}
+
+static stmt_ty
+ast_for_if_stmt_psython(struct compiling *c, const node *n)
+{
+	/* if_stmt: 'if' test suite ('elif' test suite)* ['else' suite] */
+	char *s;
+	int end_lineno, end_col_offset;
+
+	REQ(n, if_stmt);
+
+	if (NCH(n) == 3) {
+		expr_ty expression;
+		asdl_seq *suite_seq;
+
+		expression = ast_for_expr(c, CHILD(n, 1));
+		if (!expression)
+			return NULL;
+		suite_seq = ast_for_suite(c, CHILD(n, 2));
+		if (!suite_seq)
+			return NULL;
+		get_last_end_pos(suite_seq, &end_lineno, &end_col_offset);
+
+		return If(expression, suite_seq, NULL, LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	}
+
+	s = STR(CHILD(n, 3));
+	/* s[2], the third character in the string, will be
+	   's' for el_s_e, or
+	   'i' for el_i_f
+	*/
+	if (s[2] == 's') {
+		expr_ty expression;
+		asdl_seq *seq1, *seq2;
+
+		expression = ast_for_expr(c, CHILD(n, 1));
+		if (!expression)
+			return NULL;
+		seq1 = ast_for_suite(c, CHILD(n, 2));
+		if (!seq1)
+			return NULL;
+		seq2 = ast_for_suite(c, CHILD(n, 4));
+		if (!seq2)
+			return NULL;
+		get_last_end_pos(seq2, &end_lineno, &end_col_offset);
+
+		return If(expression, seq1, seq2, LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	}
+	else if (s[2] == 'i') {
+		int i, n_elif, has_else = 0;
+		expr_ty expression;
+		asdl_seq *suite_seq;
+		asdl_seq *orelse = NULL;
+		n_elif = NCH(n) - 3;
+		/* must reference the child n_elif+1 since 'else' token is third,
+		   not fourth, child from the end. */
+		if (TYPE(CHILD(n, (n_elif + 1))) == NAME
+			&& STR(CHILD(n, (n_elif + 1)))[2] == 's') {
+			has_else = 1;
+			n_elif -= 2;
+		}
+		n_elif /= 3;
+
+		if (has_else) {
+			asdl_seq *suite_seq2;
+
+			orelse = _Py_asdl_seq_new(1, c->c_arena);
+			if (!orelse)
+				return NULL;
+			expression = ast_for_expr(c, CHILD(n, NCH(n) - 4));
+			if (!expression)
+				return NULL;
+			suite_seq = ast_for_suite(c, CHILD(n, NCH(n) - 3));
+			if (!suite_seq)
+				return NULL;
+			suite_seq2 = ast_for_suite(c, CHILD(n, NCH(n) - 1));
+			if (!suite_seq2)
+				return NULL;
+			get_last_end_pos(suite_seq2, &end_lineno, &end_col_offset);
+
+			asdl_seq_SET(orelse, 0,
+				If(expression, suite_seq, suite_seq2,
+					LINENO(CHILD(n, NCH(n) - 7)),
+					CHILD(n, NCH(n) - 7)->n_col_offset,
+					end_lineno, end_col_offset, c->c_arena));
+			/* the just-created orelse handled the last elif */
+			n_elif--;
+		}
+
+		for (i = 0; i < n_elif; i++) {
+			int off = 4 + (n_elif - i - 1) * 3;
+			asdl_seq *newobj = _Py_asdl_seq_new(1, c->c_arena);
+			if (!newobj)
+				return NULL;
+			expression = ast_for_expr(c, CHILD(n, off));
+			if (!expression)
+				return NULL;
+			suite_seq = ast_for_suite(c, CHILD(n, off + 1));
+			if (!suite_seq)
+				return NULL;
+
+			if (orelse != NULL) {
+				get_last_end_pos(orelse, &end_lineno, &end_col_offset);
+			}
+			else {
+				get_last_end_pos(suite_seq, &end_lineno, &end_col_offset);
+			}
+			asdl_seq_SET(newobj, 0,
+				If(expression, suite_seq, orelse,
+					LINENO(CHILD(n, off - 1)),
+					CHILD(n, off - 1)->n_col_offset,
+					end_lineno, end_col_offset, c->c_arena));
+			orelse = newobj;
+		}
+		expression = ast_for_expr(c, CHILD(n, 1));
+		if (!expression)
+			return NULL;
+		suite_seq = ast_for_suite(c, CHILD(n, 2));
+		if (!suite_seq)
+			return NULL;
+		get_last_end_pos(orelse, &end_lineno, &end_col_offset);
+		return If(expression, suite_seq, orelse,
+			LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	}
+
+	PyErr_Format(PyExc_SystemError,
+		"unexpected token in 'if' statement: %s", s);
+	return NULL;
+}
+
+static stmt_ty
 ast_for_if_stmt(struct compiling *c, const node *n)
 {
-    /* if_stmt: 'if' test ':' suite ('elif' test ':' suite)*
-       ['else' ':' suite]
-    */
-    char *s;
-    int end_lineno, end_col_offset;
+	if (isCurrentFilePsython())
+		return ast_for_if_stmt_psython(c, n);
+	else
+		return ast_for_if_stmt_python(c, n);
+}
 
-    REQ(n, if_stmt);
+static stmt_ty
+ast_for_while_stmt_python(struct compiling *c, const node *n)
+{
+	/* while_stmt: 'while' test ':' suite ['else' ':' suite] */
+	REQ(n, while_stmt);
+	int end_lineno, end_col_offset;
 
-    if (NCH(n) == 3) {
-        expr_ty expression;
-        asdl_seq *suite_seq;
+	if (NCH(n) == 4) {
+		expr_ty expression;
+		asdl_seq *suite_seq;
 
-        expression = ast_for_expr(c, CHILD(n, 1));
-        if (!expression)
-            return NULL;
-        suite_seq = ast_for_suite(c, CHILD(n, 2));
-        if (!suite_seq)
-            return NULL;
-        get_last_end_pos(suite_seq, &end_lineno, &end_col_offset);
+		expression = ast_for_expr(c, CHILD(n, 1));
+		if (!expression)
+			return NULL;
+		suite_seq = ast_for_suite(c, CHILD(n, 3));
+		if (!suite_seq)
+			return NULL;
+		get_last_end_pos(suite_seq, &end_lineno, &end_col_offset);
+		return While(expression, suite_seq, NULL, LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	}
+	else if (NCH(n) == 7) {
+		expr_ty expression;
+		asdl_seq *seq1, *seq2;
 
-        return If(expression, suite_seq, NULL, LINENO(n), n->n_col_offset,
-                  end_lineno, end_col_offset, c->c_arena);
-    }
+		expression = ast_for_expr(c, CHILD(n, 1));
+		if (!expression)
+			return NULL;
+		seq1 = ast_for_suite(c, CHILD(n, 3));
+		if (!seq1)
+			return NULL;
+		seq2 = ast_for_suite(c, CHILD(n, 6));
+		if (!seq2)
+			return NULL;
+		get_last_end_pos(seq2, &end_lineno, &end_col_offset);
 
-    s = STR(CHILD(n, 3));
-    /* s[2], the third character in the string, will be
-       's' for el_s_e, or
-       'i' for el_i_f
-    */
-    if (s[2] == 's') {
-        expr_ty expression;
-        asdl_seq *seq1, *seq2;
+		return While(expression, seq1, seq2, LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	}
 
-        expression = ast_for_expr(c, CHILD(n, 1));
-        if (!expression)
-            return NULL;
-        seq1 = ast_for_suite(c, CHILD(n, 2));
-        if (!seq1)
-            return NULL;
-        seq2 = ast_for_suite(c, CHILD(n, 4));
-        if (!seq2)
-            return NULL;
-        get_last_end_pos(seq2, &end_lineno, &end_col_offset);
+	PyErr_Format(PyExc_SystemError,
+		"wrong number of tokens for 'while' statement: %d",
+		NCH(n));
+	return NULL;
+}
 
-        return If(expression, seq1, seq2, LINENO(n), n->n_col_offset,
-                  end_lineno, end_col_offset, c->c_arena);
-    }
-    else if (s[2] == 'i') {
-        int i, n_elif, has_else = 0;
-        expr_ty expression;
-        asdl_seq *suite_seq;
-        asdl_seq *orelse = NULL;
-        n_elif = NCH(n) - 3;
-        /* must reference the child n_elif+1 since 'else' token is third,
-           not fourth, child from the end. */
-        if (TYPE(CHILD(n, (n_elif + 1))) == NAME
-            && STR(CHILD(n, (n_elif + 1)))[2] == 's') {
-            has_else = 1;
-            n_elif -= 2;
-        }
-        n_elif /= 3;
+static stmt_ty
+ast_for_while_stmt_psython(struct compiling *c, const node *n)
+{
+	/* while_stmt: 'while' test suite ['else' suite] */
+	REQ(n, while_stmt);
+	int end_lineno, end_col_offset;
 
-        if (has_else) {
-            asdl_seq *suite_seq2;
+	if (NCH(n) == 3) {
+		expr_ty expression;
+		asdl_seq *suite_seq;
 
-            orelse = _Py_asdl_seq_new(1, c->c_arena);
-            if (!orelse)
-                return NULL;
-            expression = ast_for_expr(c, CHILD(n, NCH(n) - 4));
-            if (!expression)
-                return NULL;
-            suite_seq = ast_for_suite(c, CHILD(n, NCH(n) - 3));
-            if (!suite_seq)
-                return NULL;
-            suite_seq2 = ast_for_suite(c, CHILD(n, NCH(n) - 1));
-            if (!suite_seq2)
-                return NULL;
-            get_last_end_pos(suite_seq2, &end_lineno, &end_col_offset);
+		expression = ast_for_expr(c, CHILD(n, 1));
+		if (!expression)
+			return NULL;
+		suite_seq = ast_for_suite(c, CHILD(n, 2));
+		if (!suite_seq)
+			return NULL;
+		get_last_end_pos(suite_seq, &end_lineno, &end_col_offset);
+		return While(expression, suite_seq, NULL, LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	}
+	else if (NCH(n) == 5) {
+		expr_ty expression;
+		asdl_seq *seq1, *seq2;
 
-            asdl_seq_SET(orelse, 0,
-                         If(expression, suite_seq, suite_seq2,
-                            LINENO(CHILD(n, NCH(n) - 7)),
-                            CHILD(n, NCH(n) - 7)->n_col_offset,
-                            end_lineno, end_col_offset, c->c_arena));
-            /* the just-created orelse handled the last elif */
-            n_elif--;
-        }
+		expression = ast_for_expr(c, CHILD(n, 1));
+		if (!expression)
+			return NULL;
+		seq1 = ast_for_suite(c, CHILD(n, 2));
+		if (!seq1)
+			return NULL;
+		seq2 = ast_for_suite(c, CHILD(n, 4));
+		if (!seq2)
+			return NULL;
+		get_last_end_pos(seq2, &end_lineno, &end_col_offset);
 
-        for (i = 0; i < n_elif; i++) {
-            int off = 4 + (n_elif - i - 1) * 3;
-            asdl_seq *newobj = _Py_asdl_seq_new(1, c->c_arena);
-            if (!newobj)
-                return NULL;
-            expression = ast_for_expr(c, CHILD(n, off));  
-            if (!expression)
-                return NULL;
-            suite_seq = ast_for_suite(c, CHILD(n, off + 1));
-            if (!suite_seq)
-                return NULL;
+		return While(expression, seq1, seq2, LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	}
 
-            if (orelse != NULL) {
-                get_last_end_pos(orelse, &end_lineno, &end_col_offset);
-            } else {
-                get_last_end_pos(suite_seq, &end_lineno, &end_col_offset);
-            }
-            asdl_seq_SET(newobj, 0,
-                         If(expression, suite_seq, orelse,
-                            LINENO(CHILD(n, off - 1)),
-                            CHILD(n, off - 1)->n_col_offset,
-                            end_lineno, end_col_offset, c->c_arena));
-            orelse = newobj;
-        }
-        expression = ast_for_expr(c, CHILD(n, 1));
-        if (!expression)
-            return NULL;
-        suite_seq = ast_for_suite(c, CHILD(n, 2));
-        if (!suite_seq)
-            return NULL;
-        get_last_end_pos(orelse, &end_lineno, &end_col_offset);
-        return If(expression, suite_seq, orelse,
-                  LINENO(n), n->n_col_offset,
-                  end_lineno, end_col_offset, c->c_arena);
-    }
-
-    PyErr_Format(PyExc_SystemError,
-                 "unexpected token in 'if' statement: %s", s);
-    return NULL;
+	PyErr_Format(PyExc_SystemError,
+		"wrong number of tokens for 'while' statement: %d",
+		NCH(n));
+	return NULL;
 }
 
 static stmt_ty
 ast_for_while_stmt(struct compiling *c, const node *n)
 {
-    /* while_stmt: 'while' test ':' suite ['else' ':' suite] */
-    REQ(n, while_stmt);
-    int end_lineno, end_col_offset;
+	if (isCurrentFilePsython())
+		return ast_for_while_stmt_psython(c, n);
+	else
+		return ast_for_while_stmt_python(c, n);
+}
 
-    if (NCH(n) == 3) {
-        expr_ty expression;
-        asdl_seq *suite_seq;
+static stmt_ty
+ast_for_for_stmt_python(struct compiling *c, const node *n0, bool is_async)
+{
+	const node * const n = is_async ? CHILD(n0, 1) : n0;
+	asdl_seq *_target, *seq = NULL, *suite_seq;
+	expr_ty expression;
+	expr_ty target, first;
+	const node *node_target;
+	int end_lineno, end_col_offset;
+	int has_type_comment;
+	string type_comment;
 
-        expression = ast_for_expr(c, CHILD(n, 1));
-        if (!expression)
-            return NULL;
-        suite_seq = ast_for_suite(c, CHILD(n, 2));
-        if (!suite_seq)
-            return NULL;
-        get_last_end_pos(suite_seq, &end_lineno, &end_col_offset);
-        return While(expression, suite_seq, NULL, LINENO(n), n->n_col_offset,
-                     end_lineno, end_col_offset, c->c_arena);
-    }
-    else if (NCH(n) == 5) {
-        expr_ty expression;
-        asdl_seq *seq1, *seq2;
+	if (is_async && c->c_feature_version < 5) {
+		ast_error(c, n,
+			"Async for loops are only supported in Python 3.5 and greater");
+		return NULL;
+	}
 
-        expression = ast_for_expr(c, CHILD(n, 1));
-        if (!expression)
-            return NULL;
-        seq1 = ast_for_suite(c, CHILD(n, 2));
-        if (!seq1)
-            return NULL;
-        seq2 = ast_for_suite(c, CHILD(n, 4));
-        if (!seq2)
-            return NULL;
-        get_last_end_pos(seq2, &end_lineno, &end_col_offset);
+	/* for_stmt: 'for' exprlist 'in' testlist ':' [TYPE_COMMENT] suite ['else' ':' suite] */
+	REQ(n, for_stmt);
 
-        return While(expression, seq1, seq2, LINENO(n), n->n_col_offset,
-                     end_lineno, end_col_offset, c->c_arena);
-    }
+	has_type_comment = TYPE(CHILD(n, 5)) == TYPE_COMMENT;
 
-    PyErr_Format(PyExc_SystemError,
-                 "wrong number of tokens for 'while' statement: %d",
-                 NCH(n));
-    return NULL;
+	if (NCH(n) == 9 + has_type_comment) {
+		seq = ast_for_suite(c, CHILD(n, 8 + has_type_comment));
+		if (!seq)
+			return NULL;
+	}
+
+	node_target = CHILD(n, 1);
+	_target = ast_for_exprlist(c, node_target, Store);
+	if (!_target)
+		return NULL;
+	/* Check the # of children rather than the length of _target, since
+	   for x, in ... has 1 element in _target, but still requires a Tuple. */
+	first = (expr_ty)asdl_seq_GET(_target, 0);
+	if (NCH(node_target) == 1)
+		target = first;
+	else
+		target = Tuple(_target, Store, first->lineno, first->col_offset,
+			node_target->n_end_lineno, node_target->n_end_col_offset,
+			c->c_arena);
+
+	expression = ast_for_testlist(c, CHILD(n, 3));
+	if (!expression)
+		return NULL;
+	suite_seq = ast_for_suite(c, CHILD(n, 5 + has_type_comment));
+	if (!suite_seq)
+		return NULL;
+
+	if (seq != NULL) {
+		get_last_end_pos(seq, &end_lineno, &end_col_offset);
+	}
+	else {
+		get_last_end_pos(suite_seq, &end_lineno, &end_col_offset);
+	}
+
+	if (has_type_comment) {
+		type_comment = NEW_TYPE_COMMENT(CHILD(n, 5));
+		if (!type_comment)
+			return NULL;
+	}
+	else
+		type_comment = NULL;
+
+	if (is_async)
+		return AsyncFor(target, expression, suite_seq, seq, type_comment,
+			LINENO(n0), n0->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	else
+		return For(target, expression, suite_seq, seq, type_comment,
+			LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+}
+
+static stmt_ty
+ast_for_for_stmt_psython(struct compiling *c, const node *n0, bool is_async)
+{
+	const node * const n = is_async ? CHILD(n0, 1) : n0;
+	asdl_seq *_target, *seq = NULL, *suite_seq;
+	expr_ty expression;
+	expr_ty target, first;
+	const node *node_target;
+	int end_lineno, end_col_offset;
+	int has_type_comment;
+	string type_comment;
+
+	if (is_async && c->c_feature_version < 5) {
+		ast_error(c, n,
+			"Async for loops are only supported in Python 3.5 and greater");
+		return NULL;
+	}
+
+	/* for_stmt: 'for' exprlist 'in' testlist [TYPE_COMMENT] suite ['else' suite] */
+	REQ(n, for_stmt);
+
+	has_type_comment = TYPE(CHILD(n, 4)) == TYPE_COMMENT;
+
+	if (NCH(n) == 7 + has_type_comment) {
+		seq = ast_for_suite(c, CHILD(n, 6 + has_type_comment));
+		if (!seq)
+			return NULL;
+	}
+
+	node_target = CHILD(n, 1);
+	_target = ast_for_exprlist(c, node_target, Store);
+	if (!_target)
+		return NULL;
+	/* Check the # of children rather than the length of _target, since
+	   for x, in ... has 1 element in _target, but still requires a Tuple. */
+	first = (expr_ty)asdl_seq_GET(_target, 0);
+	if (NCH(node_target) == 1)
+		target = first;
+	else
+		target = Tuple(_target, Store, first->lineno, first->col_offset,
+			node_target->n_end_lineno, node_target->n_end_col_offset,
+			c->c_arena);
+
+	expression = ast_for_testlist(c, CHILD(n, 3));
+	if (!expression)
+		return NULL;
+	suite_seq = ast_for_suite(c, CHILD(n, 4 + has_type_comment));
+	if (!suite_seq)
+		return NULL;
+
+	if (seq != NULL) {
+		get_last_end_pos(seq, &end_lineno, &end_col_offset);
+	}
+	else {
+		get_last_end_pos(suite_seq, &end_lineno, &end_col_offset);
+	}
+
+	if (has_type_comment) {
+		type_comment = NEW_TYPE_COMMENT(CHILD(n, 4));
+		if (!type_comment)
+			return NULL;
+	}
+	else
+		type_comment = NULL;
+
+	if (is_async)
+		return AsyncFor(target, expression, suite_seq, seq, type_comment,
+			LINENO(n0), n0->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	else
+		return For(target, expression, suite_seq, seq, type_comment,
+			LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
 }
 
 static stmt_ty
 ast_for_for_stmt(struct compiling *c, const node *n0, bool is_async)
 {
-    const node * const n = is_async ? CHILD(n0, 1) : n0;
-    asdl_seq *_target, *seq = NULL, *suite_seq;
-    expr_ty expression;
-    expr_ty target, first;
-    const node *node_target;
-    int end_lineno, end_col_offset;
-    int has_type_comment;
-    string type_comment;
-
-    if (is_async && c->c_feature_version < 5) {
-        ast_error(c, n,
-                  "Async for loops are only supported in Python 3.5 and greater");
-        return NULL;
-    }
-
-    /* for_stmt: 'for' exprlist 'in' testlist ':' [TYPE_COMMENT] suite ['else' ':' suite]
-	   for_stmt: 'for' exprlist 'in' testlist [TYPE_COMMENT] suite ['else' suite]
-	*/
-    REQ(n, for_stmt);
-
-    has_type_comment = TYPE(CHILD(n, 4)) == TYPE_COMMENT;
-
-    if (NCH(n) == 7 + has_type_comment) {
-        seq = ast_for_suite(c, CHILD(n, 6 + has_type_comment));
-        if (!seq)
-            return NULL;
-    }
-
-    node_target = CHILD(n, 1);
-    _target = ast_for_exprlist(c, node_target, Store);
-    if (!_target)
-        return NULL;
-    /* Check the # of children rather than the length of _target, since
-       for x, in ... has 1 element in _target, but still requires a Tuple. */
-    first = (expr_ty)asdl_seq_GET(_target, 0);
-    if (NCH(node_target) == 1)
-        target = first;
-    else
-        target = Tuple(_target, Store, first->lineno, first->col_offset,
-                       node_target->n_end_lineno, node_target->n_end_col_offset,
-                       c->c_arena);
-
-    expression = ast_for_testlist(c, CHILD(n, 3));
-    if (!expression)
-        return NULL;
-    suite_seq = ast_for_suite(c, CHILD(n, 4 + has_type_comment));
-    if (!suite_seq)
-        return NULL;
-
-    if (seq != NULL) {
-        get_last_end_pos(seq, &end_lineno, &end_col_offset);
-    } else {
-        get_last_end_pos(suite_seq, &end_lineno, &end_col_offset);
-    }
-
-    if (has_type_comment) {
-        type_comment = NEW_TYPE_COMMENT(CHILD(n, 4));
-        if (!type_comment)
-            return NULL;
-    }
-    else
-        type_comment = NULL;
-
-    if (is_async)
-        return AsyncFor(target, expression, suite_seq, seq, type_comment,
-                        LINENO(n0), n0->n_col_offset,
-                        end_lineno, end_col_offset, c->c_arena);
-    else
-        return For(target, expression, suite_seq, seq, type_comment,
-                   LINENO(n), n->n_col_offset,
-                   end_lineno, end_col_offset, c->c_arena);
+	if (isCurrentFilePsython())
+		return ast_for_for_stmt_psython(c, n0, is_async);
+	else
+		return ast_for_for_stmt_python(c, n0, is_async);
 }
 
 static excepthandler_ty
@@ -4315,81 +4817,172 @@ ast_for_except_clause(struct compiling *c, const node *exc, node *body)
 }
 
 static stmt_ty
+ast_for_try_stmt_python(struct compiling *c, const node *n)
+{
+	const int nch = NCH(n);
+	int end_lineno, end_col_offset, n_except = (nch - 3) / 3;
+	asdl_seq *body, *handlers = NULL, *orelse = NULL, *finally = NULL;
+	excepthandler_ty last_handler;
+
+	REQ(n, try_stmt);
+
+	body = ast_for_suite(c, CHILD(n, 2));
+	if (body == NULL)
+		return NULL;
+
+	if (TYPE(CHILD(n, nch - 3)) == NAME) {
+		if (strcmp(STR(CHILD(n, nch - 3)), "finally") == 0) {
+			if (nch >= 9 && TYPE(CHILD(n, nch - 6)) == NAME) {
+				/* we can assume it's an "else",
+				   because nch >= 9 for try-else-finally and
+				   it would otherwise have a type of except_clause */
+				orelse = ast_for_suite(c, CHILD(n, nch - 4));
+				if (orelse == NULL)
+					return NULL;
+				n_except--;
+			}
+
+			finally = ast_for_suite(c, CHILD(n, nch - 1));
+			if (finally == NULL)
+				return NULL;
+			n_except--;
+		}
+		else {
+			/* we can assume it's an "else",
+			   otherwise it would have a type of except_clause */
+			orelse = ast_for_suite(c, CHILD(n, nch - 1));
+			if (orelse == NULL)
+				return NULL;
+			n_except--;
+		}
+	}
+	else if (TYPE(CHILD(n, nch - 3)) != except_clause) {
+		ast_error(c, n, "malformed 'try' statement");
+		return NULL;
+	}
+
+	if (n_except > 0) {
+		int i;
+		/* process except statements to create a try ... except */
+		handlers = _Py_asdl_seq_new(n_except, c->c_arena);
+		if (handlers == NULL)
+			return NULL;
+
+		for (i = 0; i < n_except; i++) {
+			excepthandler_ty e = ast_for_except_clause(c, CHILD(n, 3 + i * 3),
+				CHILD(n, 5 + i * 3));
+			if (!e)
+				return NULL;
+			asdl_seq_SET(handlers, i, e);
+		}
+	}
+
+	assert(finally != NULL || asdl_seq_LEN(handlers));
+	if (finally != NULL) {
+		// finally is always last
+		get_last_end_pos(finally, &end_lineno, &end_col_offset);
+	}
+	else if (orelse != NULL) {
+		// otherwise else is last
+		get_last_end_pos(orelse, &end_lineno, &end_col_offset);
+	}
+	else {
+		// inline the get_last_end_pos logic due to layout mismatch
+		last_handler = (excepthandler_ty)asdl_seq_GET(handlers, n_except - 1);
+		end_lineno = last_handler->end_lineno;
+		end_col_offset = last_handler->end_col_offset;
+	}
+	return Try(body, handlers, orelse, finally, LINENO(n), n->n_col_offset,
+		end_lineno, end_col_offset, c->c_arena);
+}
+
+static stmt_ty
+ast_for_try_stmt_psython(struct compiling *c, const node *n)
+{
+	const int nch = NCH(n);
+	int end_lineno, end_col_offset, n_except = (nch - 2) / 2;
+	asdl_seq *body, *handlers = NULL, *orelse = NULL, *finally = NULL;
+	excepthandler_ty last_handler;
+
+	REQ(n, try_stmt);
+
+	body = ast_for_suite(c, CHILD(n, 1));
+	if (body == NULL)
+		return NULL;
+
+	if (TYPE(CHILD(n, nch - 2)) == NAME) {
+		if (strcmp(STR(CHILD(n, nch - 2)), "finally") == 0) {
+			if (nch >= 6 && TYPE(CHILD(n, nch - 4)) == NAME) {
+				/* we can assume it's an "else",
+				   because nch >= 9 for try-else-finally and
+				   it would otherwise have a type of except_clause */
+				orelse = ast_for_suite(c, CHILD(n, nch - 3));
+				if (orelse == NULL)
+					return NULL;
+				n_except--;
+			}
+
+			finally = ast_for_suite(c, CHILD(n, nch - 1));
+			if (finally == NULL)
+				return NULL;
+			n_except--;
+		}
+		else {
+			/* we can assume it's an "else",
+			   otherwise it would have a type of except_clause */
+			orelse = ast_for_suite(c, CHILD(n, nch - 1));
+			if (orelse == NULL)
+				return NULL;
+			n_except--;
+		}
+	}
+	else if (TYPE(CHILD(n, nch - 2)) != except_clause) {
+		ast_error(c, n, "malformed 'try' statement");
+		return NULL;
+	}
+
+	if (n_except > 0) {
+		int i;
+		/* process except statements to create a try ... except */
+		handlers = _Py_asdl_seq_new(n_except, c->c_arena);
+		if (handlers == NULL)
+			return NULL;
+
+		for (i = 0; i < n_except; i++) {
+			excepthandler_ty e = ast_for_except_clause(c, CHILD(n, 2 + i * 2),
+				CHILD(n, 3 + i * 2));
+			if (!e)
+				return NULL;
+			asdl_seq_SET(handlers, i, e);
+		}
+	}
+
+	assert(finally != NULL || asdl_seq_LEN(handlers));
+	if (finally != NULL) {
+		// finally is always last
+		get_last_end_pos(finally, &end_lineno, &end_col_offset);
+	}
+	else if (orelse != NULL) {
+		// otherwise else is last
+		get_last_end_pos(orelse, &end_lineno, &end_col_offset);
+	}
+	else {
+		// inline the get_last_end_pos logic due to layout mismatch
+		last_handler = (excepthandler_ty)asdl_seq_GET(handlers, n_except - 1);
+		end_lineno = last_handler->end_lineno;
+		end_col_offset = last_handler->end_col_offset;
+	}
+	return Try(body, handlers, orelse, finally, LINENO(n), n->n_col_offset,
+		end_lineno, end_col_offset, c->c_arena);
+}
+
+static stmt_ty
 ast_for_try_stmt(struct compiling *c, const node *n)
 {
-    const int nch = NCH(n);
-    int end_lineno, end_col_offset, n_except = (nch - 2)/2;
-    asdl_seq *body, *handlers = NULL, *orelse = NULL, *finally = NULL;
-    excepthandler_ty last_handler;
-
-    REQ(n, try_stmt);
-
-    body = ast_for_suite(c, CHILD(n, 1));
-    if (body == NULL)
-        return NULL;
-
-    if (TYPE(CHILD(n, nch - 2)) == NAME) {
-        if (strcmp(STR(CHILD(n, nch - 2)), "finally") == 0) {
-            if (nch >= 6 && TYPE(CHILD(n, nch - 4)) == NAME) {
-                /* we can assume it's an "else",
-                   because nch >= 9 for try-else-finally and
-                   it would otherwise have a type of except_clause */
-                orelse = ast_for_suite(c, CHILD(n, nch - 3));
-                if (orelse == NULL)
-                    return NULL;
-                n_except--;
-            }
-
-            finally = ast_for_suite(c, CHILD(n, nch - 1));
-            if (finally == NULL)
-                return NULL;
-            n_except--;
-        }
-        else {
-            /* we can assume it's an "else",
-               otherwise it would have a type of except_clause */
-            orelse = ast_for_suite(c, CHILD(n, nch - 1));
-            if (orelse == NULL)
-                return NULL;
-            n_except--;
-        }
-    }
-    else if (TYPE(CHILD(n, nch - 2)) != except_clause) {
-        ast_error(c, n, "malformed 'try' statement");
-        return NULL;
-    }
-
-    if (n_except > 0) {
-        int i;
-        /* process except statements to create a try ... except */
-        handlers = _Py_asdl_seq_new(n_except, c->c_arena);
-        if (handlers == NULL)
-            return NULL;
-
-        for (i = 0; i < n_except; i++) {
-            excepthandler_ty e = ast_for_except_clause(c, CHILD(n, 2 + i * 2),
-                                                       CHILD(n, 3 + i * 2));
-            if (!e)
-                return NULL;
-            asdl_seq_SET(handlers, i, e);
-        }
-    }
-
-    assert(finally != NULL || asdl_seq_LEN(handlers));
-        if (finally != NULL) {
-        // finally is always last
-        get_last_end_pos(finally, &end_lineno, &end_col_offset);
-    } else if (orelse != NULL) {
-        // otherwise else is last
-        get_last_end_pos(orelse, &end_lineno, &end_col_offset);
-    } else {
-        // inline the get_last_end_pos logic due to layout mismatch
-        last_handler = (excepthandler_ty) asdl_seq_GET(handlers, n_except - 1);
-        end_lineno = last_handler->end_lineno;
-        end_col_offset = last_handler->end_col_offset;
-    }
-    return Try(body, handlers, orelse, finally, LINENO(n), n->n_col_offset,
-               end_lineno, end_col_offset, c->c_arena);
+	if (isCurrentFilePsython())
+		return ast_for_try_stmt_psython(c, n);
+	else
+		return ast_for_try_stmt_python(c, n);
 }
 
 /* with_item: test ['as' expr] */
@@ -4418,137 +5011,277 @@ ast_for_with_item(struct compiling *c, const node *n)
 
 /* with_stmt: 'with' with_item (',' with_item)*  ':' [TYPE_COMMENT] suite */
 static stmt_ty
+ast_for_with_stmt_python(struct compiling *c, const node *n0, bool is_async)
+{
+	const node * const n = is_async ? CHILD(n0, 1) : n0;
+	int i, n_items, nch_minus_type, has_type_comment, end_lineno, end_col_offset;
+	asdl_seq *items, *body;
+	string type_comment;
+
+	if (is_async && c->c_feature_version < 5) {
+		ast_error(c, n,
+			"Async with statements are only supported in Python 3.5 and greater");
+		return NULL;
+	}
+
+	REQ(n, with_stmt);
+
+	has_type_comment = TYPE(CHILD(n, NCH(n) - 2)) == TYPE_COMMENT;
+	nch_minus_type = NCH(n) - has_type_comment;
+
+	n_items = (nch_minus_type - 2) / 2;
+	items = _Py_asdl_seq_new(n_items, c->c_arena);
+	if (!items)
+		return NULL;
+	for (i = 1; i < nch_minus_type - 2; i += 2) {
+		withitem_ty item = ast_for_with_item(c, CHILD(n, i));
+		if (!item)
+			return NULL;
+		asdl_seq_SET(items, (i - 1) / 2, item);
+	}
+
+	body = ast_for_suite(c, CHILD(n, NCH(n) - 1));
+	if (!body)
+		return NULL;
+	get_last_end_pos(body, &end_lineno, &end_col_offset);
+
+	if (has_type_comment) {
+		type_comment = NEW_TYPE_COMMENT(CHILD(n, NCH(n) - 2));
+		if (!type_comment)
+			return NULL;
+	}
+	else
+		type_comment = NULL;
+
+	if (is_async)
+		return AsyncWith(items, body, type_comment, LINENO(n0), n0->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	else
+		return With(items, body, type_comment, LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+}
+
+/* with_stmt: 'with' with_item (',' with_item)*  ':' [TYPE_COMMENT] suite */
+static stmt_ty
+ast_for_with_stmt_psython(struct compiling *c, const node *n0, bool is_async)
+{
+	const node * const n = is_async ? CHILD(n0, 1) : n0;
+	int i, n_items, nch_minus_type, has_type_comment, end_lineno, end_col_offset;
+	asdl_seq *items, *body;
+	string type_comment;
+
+	if (is_async && c->c_feature_version < 5) {
+		ast_error(c, n,
+			"Async with statements are only supported in Python 3.5 and greater");
+		return NULL;
+	}
+
+	REQ(n, with_stmt);
+
+	has_type_comment = TYPE(CHILD(n, NCH(n) - 2)) == TYPE_COMMENT;
+	nch_minus_type = NCH(n) - has_type_comment;
+
+	n_items = (nch_minus_type - 1) / 2;
+	items = _Py_asdl_seq_new(n_items, c->c_arena);
+	if (!items)
+		return NULL;
+	for (i = 1; i < nch_minus_type - 1; i += 2) {
+		withitem_ty item = ast_for_with_item(c, CHILD(n, i));
+		if (!item)
+			return NULL;
+		asdl_seq_SET(items, (i - 1) / 2, item);
+	}
+
+	body = ast_for_suite(c, CHILD(n, NCH(n) - 1));
+	if (!body)
+		return NULL;
+	get_last_end_pos(body, &end_lineno, &end_col_offset);
+
+	if (has_type_comment) {
+		type_comment = NEW_TYPE_COMMENT(CHILD(n, NCH(n) - 2));
+		if (!type_comment)
+			return NULL;
+	}
+	else
+		type_comment = NULL;
+
+	if (is_async)
+		return AsyncWith(items, body, type_comment, LINENO(n0), n0->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	else
+		return With(items, body, type_comment, LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+}
+
+/* with_stmt: 'with' with_item (',' with_item)*  ':' [TYPE_COMMENT] suite */
+static stmt_ty
 ast_for_with_stmt(struct compiling *c, const node *n0, bool is_async)
 {
-    const node * const n = is_async ? CHILD(n0, 1) : n0;
-    int i, n_items, nch_minus_type, has_type_comment, end_lineno, end_col_offset;
-    asdl_seq *items, *body;
-    string type_comment;
+	if (isCurrentFilePsython())
+		return ast_for_with_stmt_psython(c, n0, is_async);
+	else
+		return ast_for_with_stmt_python(c, n0, is_async);
+}
 
-    if (is_async && c->c_feature_version < 5) {
-        ast_error(c, n,
-                  "Async with statements are only supported in Python 3.5 and greater");
-        return NULL;
-    }
+static stmt_ty
+ast_for_classdef_python(struct compiling *c, const node *n, asdl_seq *decorator_seq)
+{
+	/* classdef: 'class' NAME ['(' arglist ')'] ':' suite */
+	PyObject *classname;
+	asdl_seq *s;
+	expr_ty call;
+	int end_lineno, end_col_offset;
 
-    REQ(n, with_stmt);
+	REQ(n, classdef);
 
-    has_type_comment = TYPE(CHILD(n, NCH(n) - 2)) == TYPE_COMMENT;
-    nch_minus_type = NCH(n) - has_type_comment;
+	if (NCH(n) == 4) { /* class NAME ':' suite */
+		s = ast_for_suite(c, CHILD(n, 3));
+		if (!s)
+			return NULL;
+		get_last_end_pos(s, &end_lineno, &end_col_offset);
 
-    n_items = (nch_minus_type - 1) / 2;
-    items = _Py_asdl_seq_new(n_items, c->c_arena);
-    if (!items)
-        return NULL;
-    for (i = 1; i < nch_minus_type - 1; i += 2) {
-        withitem_ty item = ast_for_with_item(c, CHILD(n, i));
-        if (!item)
-            return NULL;
-        asdl_seq_SET(items, (i - 1) / 2, item);
-    }
+		classname = NEW_IDENTIFIER(CHILD(n, 1));
+		if (!classname)
+			return NULL;
+		if (forbidden_name(c, classname, CHILD(n, 3), 0))
+			return NULL;
+		return ClassDef(classname, NULL, NULL, s, decorator_seq,
+			LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	}
 
-    body = ast_for_suite(c, CHILD(n, NCH(n) - 1));
-    if (!body)
-        return NULL;
-    get_last_end_pos(body, &end_lineno, &end_col_offset);
+	if (TYPE(CHILD(n, 3)) == RPAR) { /* class NAME '(' ')' ':' suite */
+		s = ast_for_suite(c, CHILD(n, 5));
+		if (!s)
+			return NULL;
+		get_last_end_pos(s, &end_lineno, &end_col_offset);
 
-    if (has_type_comment) {
-        type_comment = NEW_TYPE_COMMENT(CHILD(n, NCH(n) - 2));
-        if (!type_comment)
-            return NULL;
-    }
-    else
-        type_comment = NULL;
+		classname = NEW_IDENTIFIER(CHILD(n, 1));
+		if (!classname)
+			return NULL;
+		if (forbidden_name(c, classname, CHILD(n, 3), 0))
+			return NULL;
+		return ClassDef(classname, NULL, NULL, s, decorator_seq,
+			LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	}
 
-    if (is_async)
-        return AsyncWith(items, body, type_comment, LINENO(n0), n0->n_col_offset,
-                         end_lineno, end_col_offset, c->c_arena);
-    else
-        return With(items, body, type_comment, LINENO(n), n->n_col_offset,
-                    end_lineno, end_col_offset, c->c_arena);
+	/* class NAME '(' arglist ')' ':' suite */
+	/* build up a fake Call node so we can extract its pieces */
+	{
+		PyObject *dummy_name;
+		expr_ty dummy;
+		dummy_name = NEW_IDENTIFIER(CHILD(n, 1));
+		if (!dummy_name)
+			return NULL;
+		dummy = Name(dummy_name, Load, LINENO(n), n->n_col_offset,
+			CHILD(n, 1)->n_end_lineno, CHILD(n, 1)->n_end_col_offset,
+			c->c_arena);
+		call = ast_for_call(c, CHILD(n, 3), dummy,
+			CHILD(n, 1), NULL, CHILD(n, 4));
+		if (!call)
+			return NULL;
+	}
+	s = ast_for_suite(c, CHILD(n, 6));
+	if (!s)
+		return NULL;
+	get_last_end_pos(s, &end_lineno, &end_col_offset);
+
+	classname = NEW_IDENTIFIER(CHILD(n, 1));
+	if (!classname)
+		return NULL;
+	if (forbidden_name(c, classname, CHILD(n, 1), 0))
+		return NULL;
+
+	return ClassDef(classname, call->v.Call.args, call->v.Call.keywords, s,
+		decorator_seq, LINENO(n), n->n_col_offset,
+		end_lineno, end_col_offset, c->c_arena);
+}
+
+static stmt_ty
+ast_for_classdef_psython(struct compiling *c, const node *n, asdl_seq *decorator_seq)
+{
+	/* classdef: 'class' NAME ['(' arglist ')'] suite */
+	PyObject *classname;
+	asdl_seq *s;
+	expr_ty call;
+	int end_lineno, end_col_offset;
+
+	REQ(n, classdef);
+
+	if (NCH(n) == 3) {
+		/* class NAME suite */
+		s = ast_for_suite(c, CHILD(n, 2));
+		if (!s)
+			return NULL;
+		get_last_end_pos(s, &end_lineno, &end_col_offset);
+
+		classname = NEW_IDENTIFIER(CHILD(n, 1));
+		if (!classname)
+			return NULL;
+		if (forbidden_name(c, classname, CHILD(n, 2), 0))
+			return NULL;
+		return ClassDef(classname, NULL, NULL, s, decorator_seq,
+			LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	}
+
+	if (TYPE(CHILD(n, 3)) == RPAR) {
+		/* class NAME '(' ')' suite */
+		s = ast_for_suite(c, CHILD(n, 4));
+		if (!s)
+			return NULL;
+		get_last_end_pos(s, &end_lineno, &end_col_offset);
+
+		classname = NEW_IDENTIFIER(CHILD(n, 1));
+		if (!classname)
+			return NULL;
+		if (forbidden_name(c, classname, CHILD(n, 3), 0))
+			return NULL;
+		return ClassDef(classname, NULL, NULL, s, decorator_seq,
+			LINENO(n), n->n_col_offset,
+			end_lineno, end_col_offset, c->c_arena);
+	}
+
+	/* class NAME '(' arglist ')' suite */
+	/* build up a fake Call node so we can extract its pieces */
+	{
+		PyObject *dummy_name;
+		expr_ty dummy;
+		dummy_name = NEW_IDENTIFIER(CHILD(n, 1));
+		if (!dummy_name)
+			return NULL;
+		dummy = Name(dummy_name, Load, LINENO(n), n->n_col_offset,
+			CHILD(n, 1)->n_end_lineno, CHILD(n, 1)->n_end_col_offset,
+			c->c_arena);
+		call = ast_for_call(c, CHILD(n, 3), dummy,
+			CHILD(n, 1), NULL, CHILD(n, 4));
+		if (!call)
+			return NULL;
+	}
+	s = ast_for_suite(c, CHILD(n, 5));
+	if (!s)
+		return NULL;
+	get_last_end_pos(s, &end_lineno, &end_col_offset);
+
+	classname = NEW_IDENTIFIER(CHILD(n, 1));
+	if (!classname)
+		return NULL;
+	if (forbidden_name(c, classname, CHILD(n, 1), 0))
+		return NULL;
+
+	return ClassDef(classname, call->v.Call.args, call->v.Call.keywords, s,
+		decorator_seq, LINENO(n), n->n_col_offset,
+		end_lineno, end_col_offset, c->c_arena);
 }
 
 static stmt_ty
 ast_for_classdef(struct compiling *c, const node *n, asdl_seq *decorator_seq)
 {
-    /* classdef: 'class' NAME ['(' arglist ')'] ':' suite */
-    PyObject *classname;
-    asdl_seq *s;
-    expr_ty call;
-    int end_lineno, end_col_offset;
-
-    REQ(n, classdef);
-
-    if (NCH(n) == 3) { 
-		/* class NAME ':' suite 
-		   class NAME suite
-		*/
-        s = ast_for_suite(c, CHILD(n, 2));
-        if (!s)
-            return NULL;
-        get_last_end_pos(s, &end_lineno, &end_col_offset);
-
-        classname = NEW_IDENTIFIER(CHILD(n, 1));
-        if (!classname)
-            return NULL;
-        if (forbidden_name(c, classname, CHILD(n, 2), 0))
-            return NULL;
-        return ClassDef(classname, NULL, NULL, s, decorator_seq,
-                        LINENO(n), n->n_col_offset,
-                        end_lineno, end_col_offset, c->c_arena);
-    }
-
-    if (TYPE(CHILD(n, 3)) == RPAR) { 
-		/* class NAME '(' ')' ':' suite 
-		   class NAME '(' ')' suite
-		*/
-        s = ast_for_suite(c, CHILD(n, 4));
-        if (!s)
-            return NULL;
-        get_last_end_pos(s, &end_lineno, &end_col_offset);
-
-        classname = NEW_IDENTIFIER(CHILD(n, 1));
-        if (!classname)
-            return NULL;
-        if (forbidden_name(c, classname, CHILD(n, 3), 0))
-            return NULL;
-        return ClassDef(classname, NULL, NULL, s, decorator_seq,
-                        LINENO(n), n->n_col_offset,
-                        end_lineno, end_col_offset, c->c_arena);
-    }
-
-    /* class NAME '(' arglist ')' ':' suite 
-	   class NAME '(' arglist ')' suite
-	*/
-    /* build up a fake Call node so we can extract its pieces */
-    {
-        PyObject *dummy_name;
-        expr_ty dummy;
-        dummy_name = NEW_IDENTIFIER(CHILD(n, 1));
-        if (!dummy_name)
-            return NULL;
-        dummy = Name(dummy_name, Load, LINENO(n), n->n_col_offset,
-                     CHILD(n, 1)->n_end_lineno, CHILD(n, 1)->n_end_col_offset,
-                     c->c_arena);
-        call = ast_for_call(c, CHILD(n, 3), dummy,
-                            CHILD(n, 1), NULL, CHILD(n, 4));
-        if (!call)
-            return NULL;
-    }
-    s = ast_for_suite(c, CHILD(n, 5));
-    if (!s)
-        return NULL;
-    get_last_end_pos(s, &end_lineno, &end_col_offset);
-
-    classname = NEW_IDENTIFIER(CHILD(n, 1));
-    if (!classname)
-        return NULL;
-    if (forbidden_name(c, classname, CHILD(n, 1), 0))
-        return NULL;
-
-    return ClassDef(classname, call->v.Call.args, call->v.Call.keywords, s,
-                    decorator_seq, LINENO(n), n->n_col_offset,
-                    end_lineno, end_col_offset, c->c_arena);
+	if (isCurrentFilePsython())
+		return ast_for_classdef_psython(c, n, decorator_seq);
+	else
+		return ast_for_classdef_python(c, n, decorator_seq);
 }
 
 static stmt_ty
