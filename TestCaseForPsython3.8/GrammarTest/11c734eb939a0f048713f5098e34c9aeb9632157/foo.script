@@ -1,0 +1,66 @@
+if True{
+
+    print('if line 1')
+print('if line 2')
+
+
+
+        print('if line 3')
+        
+        
+        
+        
+        
+print('if line 4')
+}
+
+def foo()
+{
+      print('foo line 1')
+      
+      
+ print('foo line 2')
+ 
+   print('foo line 3')
+   
+  print('foo line 4')
+  
+  
+            print('foo line 5')
+}
+
+
+class Apple()
+{
+              def __init__(self)
+            {
+            
+     print('Apple init')
+        }
+    
+def bar(self)
+        {
+
+    print('Apple.bar')
+}
+            }
+ 
+
+foo() 
+Apple().bar()            
+            
+
+'''
+output :
+if line 1
+if line 2
+if line 3
+if line 4
+foo line 1
+foo line 2
+foo line 3
+foo line 4
+foo line 5
+Apple init
+Apple.bar
+'''
