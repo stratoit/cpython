@@ -53,6 +53,9 @@ _Py_IDENTIFIER(stdout);
 _Py_IDENTIFIER(stderr);
 _Py_static_string(PyId_string, "<string>");
 
+int scriptExtensions[1000] = { 1, };
+int curFile = -1;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -71,6 +74,9 @@ static int PyRun_InteractiveOneObjectEx(FILE *, PyObject *, PyCompilerFlags *);
 static PyObject* pyrun_file(FILE *fp, PyObject *filename, int start,
                             PyObject *globals, PyObject *locals, int closeit,
                             PyCompilerFlags *flags);
+
+void setFileExtension(char * filename);
+void releaseFileExtension();
 
 
 /* Parse input from a file and execute it */
@@ -1056,10 +1062,15 @@ PyRun_StringFlags(const char *str, int start, PyObject *globals,
     if (arena == NULL)
         return NULL;
 
+	setFileExtension(PyUnicode_AsUTF8((PyUnicodeObject*)filename));
+
     mod = PyParser_ASTFromStringObject(str, filename, start, flags, arena);
     if (mod != NULL)
         ret = run_mod(mod, filename, globals, locals, flags, arena);
     PyArena_Free(arena);
+
+	releaseFileExtension();
+
     return ret;
 }
 
@@ -1242,6 +1253,8 @@ Py_CompileStringObject(const char *str, PyObject *filename, int start,
     if (arena == NULL)
         return NULL;
 
+	setFileExtension(filename);
+
     mod = PyParser_ASTFromStringObject(str, filename, start, flags, arena);
     if (mod == NULL) {
         PyArena_Free(arena);
@@ -1254,6 +1267,9 @@ Py_CompileStringObject(const char *str, PyObject *filename, int start,
     }
     co = PyAST_CompileObject(mod, filename, flags, optimize, arena);
     PyArena_Free(arena);
+
+	releaseFileExtension();
+
     return (PyObject *)co;
 }
 
@@ -1345,6 +1361,8 @@ _Py_SymtableStringObjectFlags(const char *str, PyObject *filename, int start, Py
     if (arena == NULL)
         return NULL;
 
+	setFileExtension(filename);
+
     mod = PyParser_ASTFromStringObject(str, filename, start, flags, arena);
     if (mod == NULL) {
         PyArena_Free(arena);
@@ -1352,6 +1370,8 @@ _Py_SymtableStringObjectFlags(const char *str, PyObject *filename, int start, Py
     }
     st = PySymtable_BuildObject(mod, filename, 0);
     PyArena_Free(arena);
+
+	releaseFileExtension();
     return st;
 }
 
@@ -1654,6 +1674,33 @@ cleanup:
         PyObject_FREE(err->text);
         err->text = NULL;
     }
+}
+
+void setFileExtension(char * filename)
+{
+	if (!((PyUnicodeObject*)filename)->_base._base.wstr)
+	{
+		scriptExtensions[++curFile] = 0;
+		return;
+	}
+
+	int colonCnt = 0;
+	char *ch = filename;
+
+	while (*++ch != '\0') if (*ch == '.') ++colonCnt;
+	while (colonCnt && *--ch != '.');
+	++ch; //start of name
+
+	if (!strcmp(ch, "script"))
+		scriptExtensions[++curFile] = 1;
+	else
+		scriptExtensions[++curFile] = 0;
+}
+
+void releaseFileExtension()
+{
+	scriptExtensions[curFile] = 0;
+	--curFile;
 }
 
 
