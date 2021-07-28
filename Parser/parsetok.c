@@ -278,7 +278,7 @@ parsetok(struct tok_state *tok, grammar *g, int start, perrdetail *err_ret,
                except if a certain flag is given --
                codeop.py uses this. */
             if (tok->indent &&
-                !(*flags & PyPARSE_DONT_IMPLY_DEDENT))
+                !(*flags & PyPARSE_DONT_IMPLY_DEDENT) && !isCurrentFilePsython())
             {
                 tok->pendin = -tok->indent;
                 tok->indent = 0;

@@ -1617,9 +1617,9 @@ err_input(perrdetail *err)
         errtype = PyExc_IndentationError;
         if (err->expected == INDENT)
             msg = "expected an indented block";
-        else if (err->token == INDENT)
+        else if (err->token == INDENT && !isCurrentFilePsython())
             msg = "unexpected indent";
-        else if (err->token == DEDENT)
+        else if (err->token == DEDENT && !isCurrentFilePsython())
             msg = "unexpected unindent";
         else if (err->expected == NOTEQUAL) {
             errtype = PyExc_SyntaxError;

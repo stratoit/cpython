@@ -38,10 +38,12 @@ list1node(FILE *fp, node *n)
     else if (ISTERMINAL(TYPE(n))) {
         switch (TYPE(n)) {
         case INDENT:
-            ++level;
+			if(!isCurrentFilePsython())
+				++level;
             break;
         case DEDENT:
-            --level;
+			if(!isCurrentFilePsython())
+				--level;
             break;
         default:
             if (atbol) {

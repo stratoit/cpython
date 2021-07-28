@@ -1190,14 +1190,14 @@ tok_get(struct tok_state *tok, char **p_start, char **p_end)
             /* We can't jump back right here since we still
                may need to skip to the end of a comment */
         }
-        if (!blankline && tok->level == 0) {
+        if (!blankline && tok->level == 0 && !isCurrentFilePsython()) {
             if (col == tok->indstack[tok->indent]) {
                 /* No change */
                 if (altcol != tok->altindstack[tok->indent]) {
                     return indenterror(tok);
                 }
             }
-            else if (col > tok->indstack[tok->indent]) {
+            else if (col > tok->indstack[tok->indent] && !isCurrentFilePsython()) {
                 /* Indent -- always one */
                 if (tok->indent+1 >= MAXINDENT) {
                     tok->done = E_TOODEEP;
@@ -1211,7 +1211,7 @@ tok_get(struct tok_state *tok, char **p_start, char **p_end)
                 tok->indstack[++tok->indent] = col;
                 tok->altindstack[tok->indent] = altcol;
             }
-            else /* col < tok->indstack[tok->indent] */ {
+            else if(!isCurrentFilePsython())/* col < tok->indstack[tok->indent] */ {
                 /* Dedent -- any number, must be consistent */
                 while (tok->indent > 0 &&
                     col < tok->indstack[tok->indent]) {
@@ -1233,7 +1233,7 @@ tok_get(struct tok_state *tok, char **p_start, char **p_end)
     tok->start = tok->cur;
 
     /* Return pending indents/dedents */
-    if (tok->pendin != 0) {
+    if (tok->pendin != 0 && !isCurrentFilePsython()) {
         if (tok->pendin < 0) {
             tok->pendin++;
             return DEDENT;
@@ -1265,8 +1265,9 @@ tok_get(struct tok_state *tok, char **p_start, char **p_end)
         && tok->async_def_indent >= tok->indent)
     {
         tok->async_def = 0;
-        tok->async_def_indent = 0;
-        tok->async_def_nl = 0;
+		tok->async_def_nl = 0;
+		if(!isCurrentFilePsython())
+			tok->async_def_indent = 0;
     }
 
  again:
@@ -1422,7 +1423,9 @@ tok_get(struct tok_state *tok, char **p_start, char **p_end)
                 {
                     /* The next token is going to be 'def', so instead of
                        returning a plain NAME token, return ASYNC. */
-                    tok->async_def_indent = tok->indent;
+					if(!isCurrentFilePsython())
+						tok->async_def_indent = tok->indent;
+
                     tok->async_def = 1;
                     return ASYNC;
                 }
@@ -1435,7 +1438,7 @@ tok_get(struct tok_state *tok, char **p_start, char **p_end)
     /* Newline */
     if (c == '\n') {
         tok->atbol = 1;
-        if (blankline || tok->level > 0) {
+        if (blankline || (tok->level > 0 && !isCurrentFilePsython())) {
             goto nextline;
         }
         *p_start = tok->start;
