@@ -220,3 +220,10 @@ C.__exit__
 B.__exit__
 A.__exit__
 '''
+
+if True
+{
+    {1 : 'hi'}
+    b = {2 : 'hihi'}
+    print(b)
+}

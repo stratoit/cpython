@@ -54,7 +54,7 @@ _Py_IDENTIFIER(stderr);
 _Py_static_string(PyId_string, "<string>");
 
 int scriptExtensions[1000] = { 1, };
-int curFile = -1;
+int curFile = 0;
 
 #ifdef __cplusplus
 extern "C" {
@@ -249,8 +249,6 @@ PyRun_InteractiveOneObjectEx(FILE *fp, PyObject *filename,
         return -1;
     }
 
-	setFileExtension(PyUnicode_AsUTF8((PyUnicodeObject*)filename));
-
     mod = PyParser_ASTFromFileObject(fp, filename, enc,
                                      Py_single_input, ps1, ps2,
                                      flags, &errcode, arena);
@@ -263,7 +261,6 @@ PyRun_InteractiveOneObjectEx(FILE *fp, PyObject *filename,
             PyErr_Clear();
             return E_EOF;
         }
-		releaseFileExtension();
 
         return -1;
     }
@@ -280,7 +277,6 @@ PyRun_InteractiveOneObjectEx(FILE *fp, PyObject *filename,
     }
     Py_DECREF(v);
     flush_io();
-	releaseFileExtension();
     return 0;
 }
 
@@ -1264,7 +1260,7 @@ Py_CompileStringObject(const char *str, PyObject *filename, int start,
     if (arena == NULL)
         return NULL;
 
-	setFileExtension(filename);
+	setFileExtension(PyUnicode_AsUTF8(filename));
 
     mod = PyParser_ASTFromStringObject(str, filename, start, flags, arena);
     if (mod == NULL) {
@@ -1372,7 +1368,7 @@ _Py_SymtableStringObjectFlags(const char *str, PyObject *filename, int start, Py
     if (arena == NULL)
         return NULL;
 
-	setFileExtension(filename);
+	setFileExtension(PyUnicode_AsUTF8(filename));
 
     mod = PyParser_ASTFromStringObject(str, filename, start, flags, arena);
     if (mod == NULL) {
@@ -1504,7 +1500,7 @@ PyParser_ASTFromFile(FILE *fp, const char *filename_str, const char* enc,
     if (filename == NULL)
         return NULL;
 
-	setFileExtension(PyUnicode_AsUTF8(filename_str));
+	setFileExtension(filename_str);
 
     mod = PyParser_ASTFromFileObject(fp, filename, enc, start, ps1, ps2,
                                      flags, errcode, arena);

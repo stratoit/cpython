@@ -1758,17 +1758,17 @@ tok_get(struct tok_state *tok, char **p_start, char **p_end)
 	case '(':
 	case '[':
 	case '{':
-		//if (tok->level >= MAXLEVEL) {
-		//	return syntaxerror(tok, "too many nested parentheses");
-		//}
-		//tok->parenstack[tok->level] = c;
-		//tok->parenlinenostack[tok->level] = tok->lineno;
-		//tok->level++;
+		if (tok->level >= MAXLEVEL) {
+			return syntaxerror(tok, "too many nested parentheses");
+		}
+		tok->parenstack[tok->level] = c;
+		tok->parenlinenostack[tok->level] = tok->lineno;
+		tok->level++;
 		break;
 	case ')':
 	case ']':
 	case '}':
-		/*if (!tok->level) {
+		if (!tok->level) {
 			return syntaxerror(tok, "unmatched '%c'", c);
 		}
 		tok->level--;
@@ -1789,7 +1789,7 @@ tok_get(struct tok_state *tok, char **p_start, char **p_end)
 					"opening parenthesis '%c'",
 					c, opening);
 			}
-		}*/
+		}
 		break;
 	}
 
