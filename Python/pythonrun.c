@@ -61,6 +61,7 @@ extern "C" {
 #endif
 
 extern grammar _PyParser_Grammar; /* From graminit.c */
+extern grammar _PsyParser_Grammar;
 
 /* Forward */
 static void flush_io(void);
@@ -77,6 +78,7 @@ static PyObject* pyrun_file(FILE *fp, PyObject *filename, int start,
 
 void setFileExtension(char * filename);
 void releaseFileExtension();
+int isCurrentFilePsython();
 
 
 /* Parse input from a file and execute it */
@@ -246,6 +248,9 @@ PyRun_InteractiveOneObjectEx(FILE *fp, PyObject *filename,
         Py_XDECREF(oenc);
         return -1;
     }
+
+	setFileExtension(PyUnicode_AsUTF8((PyUnicodeObject*)filename));
+
     mod = PyParser_ASTFromFileObject(fp, filename, enc,
                                      Py_single_input, ps1, ps2,
                                      flags, &errcode, arena);
@@ -258,6 +263,8 @@ PyRun_InteractiveOneObjectEx(FILE *fp, PyObject *filename,
             PyErr_Clear();
             return E_EOF;
         }
+		releaseFileExtension();
+
         return -1;
     }
     m = PyImport_AddModuleObject(mod_name);
@@ -273,6 +280,7 @@ PyRun_InteractiveOneObjectEx(FILE *fp, PyObject *filename,
     }
     Py_DECREF(v);
     flush_io();
+	releaseFileExtension();
     return 0;
 }
 
@@ -1085,6 +1093,9 @@ pyrun_file(FILE *fp, PyObject *filename, int start, PyObject *globals,
     }
 
     mod_ty mod;
+
+	setFileExtension(PyUnicode_AsUTF8((PyUnicodeObject*)filename));
+
     mod = PyParser_ASTFromFileObject(fp, filename, NULL, start, 0, 0,
                                      flags, NULL, arena);
     if (closeit) {
@@ -1099,7 +1110,7 @@ pyrun_file(FILE *fp, PyObject *filename, int start, PyObject *globals,
         ret = NULL;
     }
     PyArena_Free(arena);
-
+	releaseFileExtension();
     return ret;
 }
 
@@ -1401,9 +1412,17 @@ PyParser_ASTFromStringObject(const char *s, PyObject *filename, int start,
     if (flags && (flags->cf_flags & PyCF_ONLY_AST) && flags->cf_feature_version < 7)
         iflags |= PyPARSE_ASYNC_HACKS;
 
-    node *n = PyParser_ParseStringObject(s, filename,
-                                         &_PyParser_Grammar, start, &err,
-                                         &iflags);
+	node *n = NULL;
+
+	if(isCurrentFilePsython())
+		n = PyParser_ParseStringObject(s, filename,
+                                        &_PsyParser_Grammar, start, &err,
+                                        &iflags);
+	else
+		n = PyParser_ParseStringObject(s, filename,
+										&_PyParser_Grammar, start, &err,
+										&iflags);
+
     if (flags == NULL) {
         flags = &localflags;
     }
@@ -1445,9 +1464,16 @@ PyParser_ASTFromFileObject(FILE *fp, PyObject *filename, const char* enc,
     perrdetail err;
     int iflags = PARSER_FLAGS(flags);
 
-    node *n = PyParser_ParseFileObject(fp, filename, enc,
-                                       &_PyParser_Grammar,
-                                       start, ps1, ps2, &err, &iflags);
+	node *n = NULL;
+	if(isCurrentFilePsython())
+		n = PyParser_ParseFileObject(fp, filename, enc,
+                                    &_PsyParser_Grammar,
+                                    start, ps1, ps2, &err, &iflags);
+	else
+		n = PyParser_ParseFileObject(fp, filename, enc,
+									&_PyParser_Grammar,
+									start, ps1, ps2, &err, &iflags);
+
     if (flags == NULL) {
         flags = &localflags;
     }
@@ -1477,9 +1503,13 @@ PyParser_ASTFromFile(FILE *fp, const char *filename_str, const char* enc,
     filename = PyUnicode_DecodeFSDefault(filename_str);
     if (filename == NULL)
         return NULL;
+
+	setFileExtension(PyUnicode_AsUTF8(filename_str));
+
     mod = PyParser_ASTFromFileObject(fp, filename, enc, start, ps1, ps2,
                                      flags, errcode, arena);
     Py_DECREF(filename);
+	releaseFileExtension();
     return mod;
 }
 
@@ -1489,9 +1519,17 @@ node *
 PyParser_SimpleParseFileFlags(FILE *fp, const char *filename, int start, int flags)
 {
     perrdetail err;
-    node *n = PyParser_ParseFileFlags(fp, filename, NULL,
-                                      &_PyParser_Grammar,
-                                      start, NULL, NULL, &err, flags);
+	node *n = NULL;
+
+	if(isCurrentFilePsython())
+		n = PyParser_ParseFileFlags(fp, filename, NULL,
+									&_PsyParser_Grammar,
+									start, NULL, NULL, &err, flags);
+	else
+		n = PyParser_ParseFileFlags(fp, filename, NULL,
+									&_PyParser_Grammar,
+									start, NULL, NULL, &err, flags);
+
     if (n == NULL)
         err_input(&err);
     err_free(&err);
@@ -1505,8 +1543,15 @@ node *
 PyParser_SimpleParseStringFlags(const char *str, int start, int flags)
 {
     perrdetail err;
-    node *n = PyParser_ParseStringFlags(str, &_PyParser_Grammar,
+	node *n = NULL;
+
+	if(isCurrentFilePsython())
+		n = PyParser_ParseStringFlags(str, &_PsyParser_Grammar,
                                         start, &err, flags);
+	else
+		n = PyParser_ParseStringFlags(str, &_PyParser_Grammar,
+										start, &err, flags);
+
     if (n == NULL)
         err_input(&err);
     err_free(&err);
@@ -1518,8 +1563,15 @@ PyParser_SimpleParseStringFlagsFilename(const char *str, const char *filename,
                                         int start, int flags)
 {
     perrdetail err;
-    node *n = PyParser_ParseStringFlagsFilename(str, filename,
-                            &_PyParser_Grammar, start, &err, flags);
+	node *n = NULL;
+
+	if(isCurrentFilePsython())
+		n = PyParser_ParseStringFlagsFilename(str, filename,
+												&_PsyParser_Grammar, start, &err, flags);
+	else
+		n = PyParser_ParseStringFlagsFilename(str, filename,
+												&_PyParser_Grammar, start, &err, flags);
+
     if (n == NULL)
         err_input(&err);
     err_free(&err);
@@ -1701,6 +1753,14 @@ void releaseFileExtension()
 {
 	scriptExtensions[curFile] = 0;
 	--curFile;
+}
+
+int isCurrentFilePsython()
+{
+	if (scriptExtensions[curFile])
+		return 1;
+	else
+		return 0;
 }
 
 

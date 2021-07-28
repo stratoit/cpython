@@ -1130,6 +1130,9 @@
     <ClCompile Include="$(zlibDir)\zutil.c">
       <Filter>Modules\zlib</Filter>
     </ClCompile>
+    <ClCompile Include="..\Python\graminit2.c">
+      <Filter>Python</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\PC\python_nt.rc">

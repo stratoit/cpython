@@ -39,6 +39,10 @@
 #include "parsetok.h"
 
 extern grammar _PyParser_Grammar; /* From graminit.c */
+extern grammar _PsyParser_Grammar; /* From graminit2.c */
+
+extern int scriptExtensions[1000];
+extern int curFile;
 
 #ifdef lint
 #include <note.h>
@@ -572,11 +576,24 @@ parser_do_parse(PyObject *args, PyObject *kw, const char *argspec, int type)
     static char *keywords[] = {"source", NULL};
 
     if (PyArg_ParseTupleAndKeywords(args, kw, argspec, keywords, &string)) {
-        node* n = PyParser_ParseStringFlagsFilenameEx(string, NULL,
-                                                       &_PyParser_Grammar,
-                                                      (type == PyST_EXPR)
-                                                      ? eval_input : file_input,
-                                                      &err, &flags);
+		node* n = NULL;
+
+		if (isCurrentFilePsython())
+		{
+			n = PyParser_ParseStringFlagsFilenameEx(string, NULL,
+				&_PsyParser_Grammar,
+				(type == PyST_EXPR)
+				? eval_input : file_input,
+				&err, &flags);
+		}
+		else
+		{
+			n = PyParser_ParseStringFlagsFilenameEx(string, NULL,
+				&_PyParser_Grammar,
+				(type == PyST_EXPR)
+				? eval_input : file_input,
+				&err, &flags);
+		}
 
         if (n) {
             res = parser_newstobject(n, type);
@@ -645,14 +662,21 @@ validate_node(node *tree)
     int nch = NCH(tree);
     state *dfa_state;
     int pos, arc;
-
+	
     assert(ISNONTERMINAL(type));
     type -= NT_OFFSET;
-    if (type >= _PyParser_Grammar.g_ndfas) {
+    if ((!isCurrentFilePsython() && type >= _PyParser_Grammar.g_ndfas) 
+		|| (isCurrentFilePsython() && type >= _PsyParser_Grammar.g_ndfas)) {
         PyErr_Format(parser_error, "Unrecognized node type %d.", TYPE(tree));
         return 0;
     }
-    const dfa *nt_dfa = &_PyParser_Grammar.g_dfa[type];
+	const dfa *nt_dfa = NULL;
+	
+	if(isCurrentFilePsython())
+		nt_dfa = &_PsyParser_Grammar.g_dfa[type];
+	else
+		nt_dfa = &_PyParser_Grammar.g_dfa[type];
+
     REQ(tree, nt_dfa->d_type);
 
     /* Run the DFA for this nonterminal. */
@@ -660,7 +684,8 @@ validate_node(node *tree)
     for (pos = 0; pos < nch; ++pos) {
         node *ch = CHILD(tree, pos);
         int ch_type = TYPE(ch);
-        if ((ch_type >= NT_OFFSET + _PyParser_Grammar.g_ndfas)
+        if (
+			((isCurrentFilePsython() && ch_type >= NT_OFFSET + _PsyParser_Grammar.g_ndfas) || !isCurrentFilePsython() && ch_type >= NT_OFFSET + _PyParser_Grammar.g_ndfas)
             || (ISTERMINAL(ch_type) && (ch_type >= N_TOKENS))
             || (ch_type < 0)
            ) {
@@ -675,10 +700,20 @@ validate_node(node *tree)
         }
         for (arc = 0; arc < dfa_state->s_narcs; ++arc) {
             short a_label = dfa_state->s_arc[arc].a_lbl;
-            assert(a_label < _PyParser_Grammar.g_ll.ll_nlabels);
 
-            const char *label_str = _PyParser_Grammar.g_ll.ll_label[a_label].lb_str;
-            if ((_PyParser_Grammar.g_ll.ll_label[a_label].lb_type == ch_type)
+			if(isCurrentFilePsython())
+				assert(a_label < _PsyParser_Grammar.g_ll.ll_nlabels);
+			else
+				assert(a_label < _PyParser_Grammar.g_ll.ll_nlabels);
+
+			const char *label_str = NULL;
+
+			if(isCurrentFilePsython())
+				label_str = _PsyParser_Grammar.g_ll.ll_label[a_label].lb_str;
+			else
+				label_str = _PyParser_Grammar.g_ll.ll_label[a_label].lb_str;
+
+            if (((isCurrentFilePsython() && _PsyParser_Grammar.g_ll.ll_label[a_label].lb_type == ch_type) || !isCurrentFilePsython() && _PyParser_Grammar.g_ll.ll_label[a_label].lb_type == ch_type)
                 && ((ch->n_str == NULL) || (label_str == NULL)
                      || (strcmp(ch->n_str, label_str) == 0))
                ) {
@@ -697,14 +732,31 @@ validate_node(node *tree)
             if (!a_label) /* Wouldn't accept any more children */
                 goto illegal_num_children;
 
-            int next_type = _PyParser_Grammar.g_ll.ll_label[a_label].lb_type;
-            const char *expected_str = _PyParser_Grammar.g_ll.ll_label[a_label].lb_str;
+			int next_type = 0;
+			const char *expected_str = NULL;
+
+			if (isCurrentFilePsython())
+			{
+				next_type = _PsyParser_Grammar.g_ll.ll_label[a_label].lb_type;
+				expected_str = _PsyParser_Grammar.g_ll.ll_label[a_label].lb_str;
+			}
+			else
+			{
+				next_type = _PyParser_Grammar.g_ll.ll_label[a_label].lb_type;
+				expected_str = _PyParser_Grammar.g_ll.ll_label[a_label].lb_str;
+			}
 
             if (ISNONTERMINAL(next_type)) {
-                PyErr_Format(parser_error, "Expected %s, got %s.",
-                             _PyParser_Grammar.g_dfa[next_type - NT_OFFSET].d_name,
-                             ISTERMINAL(ch_type) ? _PyParser_TokenNames[ch_type] :
-                             _PyParser_Grammar.g_dfa[ch_type - NT_OFFSET].d_name);
+				if(isCurrentFilePsython())
+					PyErr_Format(parser_error, "Expected %s, got %s.",
+								 _PsyParser_Grammar.g_dfa[next_type - NT_OFFSET].d_name,
+								 ISTERMINAL(ch_type) ? _PyParser_TokenNames[ch_type] :
+								 _PsyParser_Grammar.g_dfa[ch_type - NT_OFFSET].d_name);
+				else
+					PyErr_Format(parser_error, "Expected %s, got %s.",
+								_PyParser_Grammar.g_dfa[next_type - NT_OFFSET].d_name,
+								ISTERMINAL(ch_type) ? _PyParser_TokenNames[ch_type] :
+								_PyParser_Grammar.g_dfa[ch_type - NT_OFFSET].d_name);
             }
             else if (expected_str != NULL) {
                 PyErr_Format(parser_error, "Illegal terminal: expected '%s'.",

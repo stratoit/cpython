@@ -58,6 +58,7 @@ extern "C" {
 #endif
 
 extern grammar _PyParser_Grammar; /* From graminit.c */
+extern grammar _PsyParser_Grammar; /* From graminit1.c */
 
 /* Forward */
 static PyStatus add_main_module(PyInterpreterState *interp);
@@ -1340,7 +1341,10 @@ Py_FinalizeEx(void)
        - whatever various modules and libraries allocate
     */
 
-    PyGrammar_RemoveAccelerators(&_PyParser_Grammar);
+	if(isCurrentFilePsython())
+		PyGrammar_RemoveAccelerators(&_PsyParser_Grammar);
+	else
+		PyGrammar_RemoveAccelerators(&_PyParser_Grammar);
 
     /* Cleanup auto-thread-state */
     _PyGILState_Fini(runtime);
